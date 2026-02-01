@@ -70,10 +70,22 @@ async function generateAffiliateLink(originalUrl) {
 
 async function getShopeeLink(sourceUrl) {
     try {
+        // Check if this is a shortened affiliate link (s.shopee.com.br) - resolve it first
+        let productUrl = sourceUrl;
+        if (isShopeeAffiliateLink(sourceUrl)) {
+            console.log(`[Shopee] 🔍 Detectado link de afiliado, resolvendo...`);
+            try {
+                productUrl = await resolveShopeeAffiliateLink(sourceUrl);
+                console.log(`[Shopee] ✅ Link original do produto: ${productUrl}`);
+            } catch (resolveErr) {
+                console.warn(`[Shopee] ⚠️ Erro ao resolver link de afiliado: ${resolveErr.message}`);
+            }
+        }
+
         // Try Open API first if credentials are configured
         if (process.env.SHOPEE_APP_ID && process.env.SHOPEE_APP_SECRET) {
             try {
-                const apiLink = await generateShopeeAffiliateLink(sourceUrl);
+                const apiLink = await generateShopeeAffiliateLink(productUrl);
                 if (apiLink) return apiLink;
             } catch (apiErr) {
                 console.warn('Shopee Open API error:', apiErr.message);
@@ -85,6 +97,54 @@ async function getShopeeLink(sourceUrl) {
     } catch (err) {
         console.error('Shopee affiliate error:', err.message || err);
         return sourceUrl;
+    }
+}
+
+/**
+ * Check if a Shopee URL is an affiliate link that needs to be resolved
+ */
+function isShopeeAffiliateLink(url) {
+    const urlLower = url.toLowerCase();
+    // Shortened affiliate links: s.shopee.com.br/...
+    // These are affiliate short links that redirect to the product
+    if (urlLower.includes('s.shopee.com')) return true;
+    if (urlLower.includes('shp.ee/')) return true;
+    return false;
+}
+
+/**
+ * Resolve a Shopee affiliate link to get the original product URL
+ */
+async function resolveShopeeAffiliateLink(affiliateUrl) {
+    try {
+        const response = await axios.get(affiliateUrl, {
+            maxRedirects: 10,
+            timeout: 10000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+            },
+            validateStatus: (status) => status < 400
+        });
+
+        let finalUrl = response.request.res.responseUrl || response.config.url;
+        
+        if (finalUrl && finalUrl.includes('shopee.com.br')) {
+            const u = new URL(finalUrl);
+            // Remove affiliate tracking parameters
+            u.searchParams.delete('af_siteid');
+            u.searchParams.delete('af_sub_siteid');
+            u.searchParams.delete('af_click_lookback');
+            u.searchParams.delete('pid');
+            u.searchParams.delete('c');
+            u.searchParams.delete('is_from_login');
+            u.searchParams.delete('af_viewthrough_lookback');
+            return u.toString();
+        }
+        
+        return finalUrl || affiliateUrl;
+    } catch (err) {
+        throw err;
     }
 }
 
@@ -142,11 +202,32 @@ async function getMercadoLivreLink(sourceUrl) {
             return sourceUrl;
         }
 
+        // Check if this is an affiliate link from another person (needs to be resolved)
+        let productUrl = sourceUrl;
+        if (isMLAffiliateLink(sourceUrl)) {
+            console.log(`[ML] 🔍 Detectado link de afiliado de terceiros, resolvendo...`);
+            try {
+                const resolvedUrl = await resolveMLAffiliateLink(sourceUrl);
+                if (resolvedUrl) {
+                    productUrl = resolvedUrl;
+                    console.log(`[ML] ✅ Link original do produto: ${productUrl}`);
+                } else {
+                    console.warn(`[ML] ⚠️ Não foi possível resolver para um link de produto válido`);
+                    // Return original URL since we can't resolve it
+                    return sourceUrl;
+                }
+            } catch (resolveErr) {
+                console.warn(`[ML] ⚠️ Erro ao resolver link de afiliado: ${resolveErr.message}`);
+                // Return original URL if resolution fails
+                return sourceUrl;
+            }
+        }
+
         // Try to get short link via ML API if cookies are configured
         const mlCookies = process.env.ML_COOKIES;
         if (mlCookies) {
             try {
-                const shortUrl = await getMercadoLivreShortLink(sourceUrl, affiliateTag, mlCookies);
+                const shortUrl = await getMercadoLivreShortLink(productUrl, affiliateTag, mlCookies);
                 if (shortUrl) {
                     console.log(`[ML] Short link generated: ${shortUrl}`);
                     return shortUrl;
@@ -157,7 +238,13 @@ async function getMercadoLivreLink(sourceUrl) {
         }
 
         // Fallback: Add affiliate parameters to URL
-        const url = new URL(sourceUrl);
+        const url = new URL(productUrl);
+        // Remove existing affiliate parameters first
+        url.searchParams.delete('matt_tool');
+        url.searchParams.delete('matt_word');
+        url.searchParams.delete('DEAL_ID');
+        url.searchParams.delete('tracking_id');
+        // Add our affiliate tag
         url.searchParams.set('matt_tool', affiliateTag);
         url.searchParams.set('matt_word', affiliateTag);
         
@@ -165,6 +252,156 @@ async function getMercadoLivreLink(sourceUrl) {
     } catch (err) {
         console.error('MercadoLivre affiliate error:', err.message || err);
         return sourceUrl;
+    }
+}
+
+/**
+ * Check if a URL is a Mercado Livre affiliate link from another person
+ */
+function isMLAffiliateLink(url) {
+    const urlLower = url.toLowerCase();
+    
+    // Common patterns for ML affiliate links:
+    // - mercadolivre.com/sec/... (shortened affiliate links)
+    // - mercadolivre.com/social/... (social/profile affiliate links)
+    // - click1.mercadolivre.com.br/...
+    // - mercadolivre.com.br/...?matt_tool=...
+    // - http.mercadolivre.com/...
+    
+    if (urlLower.includes('/sec/')) return true;
+    if (urlLower.includes('/social/')) return true;
+    if (urlLower.includes('click1.mercadolivre')) return true;
+    if (urlLower.includes('click.mercadolivre')) return true;
+    if (urlLower.includes('http.mercadolivre')) return true;
+    
+    // Check for affiliate parameters from other people
+    try {
+        const u = new URL(url);
+        if (u.searchParams.has('matt_tool') || u.searchParams.has('DEAL_ID')) {
+            return true;
+        }
+    } catch (e) {
+        // Invalid URL, not an affiliate link
+    }
+    
+    return false;
+}
+
+/**
+ * Resolve a Mercado Livre affiliate link to get the original product URL
+ * Follows redirects until we reach the final product page
+ */
+async function resolveMLAffiliateLink(affiliateUrl) {
+    try {
+        // Follow redirects to get the final URL
+        const response = await axios.get(affiliateUrl, {
+            maxRedirects: 10,
+            timeout: 10000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7'
+            },
+            validateStatus: (status) => status < 400 // Accept any non-error status
+        });
+
+        // Get the final URL after all redirects
+        let finalUrl = response.request.res.responseUrl || response.config.url;
+        
+        // If axios didn't capture it, try from headers
+        if (!finalUrl && response.headers.location) {
+            finalUrl = response.headers.location;
+        }
+        
+        // Check if the final URL is a valid product page
+        // Valid ML product URLs contain /p/MLB or MLB- pattern
+        const isValidProductUrl = finalUrl && (
+            finalUrl.includes('/p/MLB') || 
+            finalUrl.includes('MLB-') ||
+            finalUrl.includes('/MLB') ||
+            (finalUrl.includes('mercadolivre.com.br') && /\/[a-z-]+-MLB-\d+/.test(finalUrl))
+        );
+        
+        // If it's not a product URL (e.g., /social/, /perfil/, etc.), try to extract from HTML
+        if (!isValidProductUrl && response.data) {
+            console.log('[ML] URL resolvida não é um produto, buscando link do produto no HTML...');
+            const productUrlMatch = response.data.match(/https:\/\/(?:www\.)?mercadolivre\.com\.br\/[^"'\s]*MLB[^"'\s]*/i);
+            if (productUrlMatch) {
+                finalUrl = productUrlMatch[0];
+                console.log(`[ML] Link do produto encontrado no HTML: ${finalUrl}`);
+            } else {
+                // Try another pattern - look for item link in og:url or canonical
+                const ogUrlMatch = response.data.match(/<meta[^>]*property="og:url"[^>]*content="([^"]+)"/i);
+                if (ogUrlMatch && ogUrlMatch[1].includes('MLB')) {
+                    finalUrl = ogUrlMatch[1];
+                    console.log(`[ML] Link do produto encontrado em og:url: ${finalUrl}`);
+                } else {
+                    const canonicalMatch = response.data.match(/<link[^>]*rel="canonical"[^>]*href="([^"]+)"/i);
+                    if (canonicalMatch && canonicalMatch[1].includes('MLB')) {
+                        finalUrl = canonicalMatch[1];
+                        console.log(`[ML] Link do produto encontrado em canonical: ${finalUrl}`);
+                    } else {
+                        console.warn('[ML] ⚠️ Não foi possível encontrar link de produto válido');
+                        // Return null to indicate we couldn't resolve to a product
+                        return null;
+                    }
+                }
+            }
+        }
+        
+        // Clean the URL - remove affiliate parameters
+        if (finalUrl) {
+            try {
+                const u = new URL(finalUrl);
+                // Remove common affiliate tracking parameters
+                u.searchParams.delete('matt_tool');
+                u.searchParams.delete('matt_word');
+                u.searchParams.delete('DEAL_ID');
+                u.searchParams.delete('tracking_id');
+                u.searchParams.delete('reco_item_pos');
+                u.searchParams.delete('reco_backend');
+                u.searchParams.delete('reco_client');
+                u.searchParams.delete('c_id');
+                u.searchParams.delete('c_element_order');
+                u.searchParams.delete('reco_backend_type');
+                u.searchParams.delete('forceInApp');
+                u.searchParams.delete('ref');
+                
+                return u.toString();
+            } catch (e) {
+                return finalUrl;
+            }
+        }
+        
+        return null;
+    } catch (err) {
+        // If redirect following fails, try with axios head request
+        try {
+            const headResponse = await axios.head(affiliateUrl, {
+                maxRedirects: 10,
+                timeout: 10000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+            });
+            
+            if (headResponse.request.res.responseUrl) {
+                const u = new URL(headResponse.request.res.responseUrl);
+                // Check if it's a valid product URL
+                if (u.pathname.includes('/p/MLB') || u.pathname.includes('MLB-')) {
+                    u.searchParams.delete('matt_tool');
+                    u.searchParams.delete('matt_word');
+                    u.searchParams.delete('DEAL_ID');
+                    u.searchParams.delete('tracking_id');
+                    return u.toString();
+                }
+            }
+        } catch (headErr) {
+            // Ignore head request errors
+        }
+        
+        console.error('[ML] Erro ao resolver link de afiliado:', err.message);
+        return null;
     }
 }
 
@@ -228,8 +465,27 @@ async function getAliExpressLink(sourceUrl) {
             return sourceUrl;
         }
 
+        let productUrl = sourceUrl;
+        
+        // Check if this is a shortened affiliate link (s.click.aliexpress.com, etc)
+        if (isAliExpressAffiliateLink(sourceUrl)) {
+            console.log(`[AliExpress] 🔍 Detectado link de afiliado, resolvendo...`);
+            try {
+                productUrl = await resolveAliExpressAffiliateLink(sourceUrl);
+                console.log(`[AliExpress] ✅ Link original do produto: ${productUrl}`);
+            } catch (resolveErr) {
+                console.warn(`[AliExpress] ⚠️ Erro ao resolver link: ${resolveErr.message}`);
+            }
+        }
+
         // AliExpress affiliate links usando tracking ID na URL
-        const url = new URL(sourceUrl);
+        const url = new URL(productUrl);
+        // Remove existing affiliate parameters
+        url.searchParams.delete('aff_fcid');
+        url.searchParams.delete('aff_platform');
+        url.searchParams.delete('sk');
+        url.searchParams.delete('aff_trace_key');
+        // Add our affiliate tag
         url.searchParams.set('aff_fcid', trackingId);
         url.searchParams.set('aff_platform', 'api');
         
@@ -237,6 +493,51 @@ async function getAliExpressLink(sourceUrl) {
     } catch (err) {
         console.error('AliExpress affiliate error:', err.message || err);
         return sourceUrl;
+    }
+}
+
+/**
+ * Check if an AliExpress URL is an affiliate link that needs to be resolved
+ */
+function isAliExpressAffiliateLink(url) {
+    const urlLower = url.toLowerCase();
+    if (urlLower.includes('s.click.aliexpress')) return true;
+    if (urlLower.includes('click.aliexpress')) return true;
+    if (urlLower.includes('aff.aliexpress')) return true;
+    if (urlLower.includes('/e/')) return true; // Short affiliate format
+    return false;
+}
+
+/**
+ * Resolve an AliExpress affiliate link to get the original product URL
+ */
+async function resolveAliExpressAffiliateLink(affiliateUrl) {
+    try {
+        const response = await axios.get(affiliateUrl, {
+            maxRedirects: 10,
+            timeout: 10000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+            },
+            validateStatus: (status) => status < 400
+        });
+
+        let finalUrl = response.request.res.responseUrl || response.config.url;
+        
+        if (finalUrl && finalUrl.includes('aliexpress')) {
+            const u = new URL(finalUrl);
+            // Remove affiliate tracking parameters
+            u.searchParams.delete('aff_fcid');
+            u.searchParams.delete('aff_platform');
+            u.searchParams.delete('sk');
+            u.searchParams.delete('aff_trace_key');
+            return u.toString();
+        }
+        
+        return finalUrl || affiliateUrl;
+    } catch (err) {
+        throw err;
     }
 }
 
@@ -249,23 +550,35 @@ async function getAmazonLink(sourceUrl) {
             return sourceUrl;
         }
 
-        // Check if URL is already a short link (amzn.to) - these already have affiliate tag
+        let productUrl = sourceUrl;
+        
+        // Check if URL is a short link (amzn.to) - needs to be resolved to get product URL
         const urlLower = sourceUrl.toLowerCase();
-        if (urlLower.includes('amzn.to/')) {
-            console.log('[Amazon] URL já é um link curto (amzn.to), retornando original');
-            return sourceUrl;
+        if (urlLower.includes('amzn.to/') || urlLower.includes('a.co/')) {
+            console.log('[Amazon] 🔍 Detectado link curto, resolvendo para URL do produto...');
+            try {
+                productUrl = await resolveAmazonShortLink(sourceUrl);
+                console.log(`[Amazon] ✅ Link original do produto: ${productUrl}`);
+            } catch (resolveErr) {
+                console.warn(`[Amazon] ⚠️ Erro ao resolver link curto: ${resolveErr.message}`);
+                // Can't resolve, return original
+                return sourceUrl;
+            }
         }
 
         // Parse the Amazon URL
-        const url = new URL(sourceUrl);
+        const url = new URL(productUrl);
         
-        // Remove existing tracking parameters if present
+        // Remove existing tracking parameters if present (from other affiliates)
         url.searchParams.delete('tag');
         url.searchParams.delete('linkCode');
         url.searchParams.delete('linkId');
         url.searchParams.delete('ref_');
+        url.searchParams.delete('ref');
+        url.searchParams.delete('psc');
+        url.searchParams.delete('smid');
         
-        // Add affiliate tag
+        // Add our affiliate tag
         url.searchParams.set('tag', trackingId);
         url.searchParams.set('linkCode', 'sl2');
         url.searchParams.set('ref_', 'as_li_ss_tl');
@@ -291,6 +604,33 @@ async function getAmazonLink(sourceUrl) {
     } catch (err) {
         console.error('Amazon affiliate error:', err.message || err);
         return sourceUrl;
+    }
+}
+
+/**
+ * Resolve an Amazon short link (amzn.to, a.co) to get the full product URL
+ */
+async function resolveAmazonShortLink(shortUrl) {
+    try {
+        const response = await axios.get(shortUrl, {
+            maxRedirects: 10,
+            timeout: 10000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+            },
+            validateStatus: (status) => status < 400
+        });
+
+        let finalUrl = response.request.res.responseUrl || response.config.url;
+        
+        if (finalUrl && (finalUrl.includes('amazon.com') || finalUrl.includes('amzn.'))) {
+            return finalUrl;
+        }
+        
+        return finalUrl || shortUrl;
+    } catch (err) {
+        throw err;
     }
 }
 

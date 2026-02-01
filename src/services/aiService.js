@@ -56,24 +56,53 @@ const CATEGORY_KEYWORDS = {
     'Variados': []
 };
 
+/**
+ * Normalize text by removing accents and converting to lowercase
+ * This allows matching "Placa Mae" with "Placa Mãe", etc.
+ */
+function normalizeText(text) {
+    if (!text) return '';
+    return text
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, ''); // Remove diacritics (accents)
+}
+
 function fallbackClassification(title = '', description = '') {
-    const text = `${title} ${description}`.toLowerCase();
+    const text = normalizeText(`${title} ${description}`);
+    const originalText = `${title} ${description}`.toLowerCase();
     
-    // Check if this is a coupon message (not a specific product)
+    // Check if this is a GENERIC coupon message (NOT a product with a coupon code)
+    // Generic coupon messages are announcements about coupons available, not specific products
     const couponIndicators = [
         'meia noite tem cupom',
         'tem cupom shopee',
-        'cupom disponível',
-        'use o cupom',
-        'aproveite o cupom',
+        'cupom disponivel',
         'pesquise seus produtos',
         'cupom de r$',
-        'cupom shopee',
-        'cupom mercado livre',
-        'cupom amazon'
+        'cupom geral',
+        'cupons disponiveis',
+        'resgate o cupom'
     ];
     
-    const isCouponMessage = couponIndicators.some(indicator => text.includes(indicator));
+    // Product indicators - if these are present, it's a PRODUCT message, not a coupon announcement
+    const productIndicators = [
+        /\d+[.,]\d{2}\s*(à vista|a vista|reais)?/i,  // Price pattern
+        /r\$\s*\d+[.,]/i,                             // R$ price
+        /MLB\d+/i,                                     // ML product ID
+        /mercadolivre\.com\.br.*\/p\//i,              // ML product URL
+        /shopee\.com\.br\/.*-i\.\d+\.\d+/i,           // Shopee product URL
+        /amazon\.com\.br\/dp\//i,                     // Amazon product URL
+    ];
+    
+    // Check if it's a product message (has price or product URL)
+    const hasProductIndicator = productIndicators.some(pattern => pattern.test(originalText));
+    
+    // It's only a coupon message if it has coupon indicators AND NO product indicators
+    const hasCouponIndicator = couponIndicators.some(indicator => text.includes(normalizeText(indicator)));
+    const isCouponMessage = hasCouponIndicator && !hasProductIndicator;
+    
+    console.log(`[AI Fallback] Product indicators: ${hasProductIndicator}, Coupon indicators: ${hasCouponIndicator}, Is coupon message: ${isCouponMessage}`);
     
     // Extract title - try multiple approaches to find the PRODUCT NAME, not marketing phrases
     const lines = description.split('\n').map(l => l.trim()).filter(l => l && !l.includes('http'));
@@ -143,47 +172,73 @@ function fallbackClassification(title = '', description = '') {
     
     // Extract price from text (look for various patterns) - NOT for coupon messages
     let extractedPrice = '';
+    let extractedVariants = [];
+    
     if (!isCouponMessage) {
-        // Try 💰 R$ format first
-        let priceMatch = description.match(/💰\s*(R\$\s*[\d.,]+)/i);
-        if (priceMatch) {
-            extractedPrice = priceMatch[1];
-        } else {
-            // Try "R$ XX,XX" or "XX,XX à vista" patterns
-            priceMatch = description.match(/R\$\s*([\d.,]+)/i);
+        // First, try to detect variants (multiple sizes/options with prices)
+        // Pattern: "30ml — R$ 186" or "30ml - R$ 186" or "30ml: R$ 186" or "100ml R$ 289"
+        const variantPattern = /(\d+\s*(?:ml|g|gb|tb|kg|un|pcs?|unidades?|metros?|m|cm|l|litros?))\s*[—\-:]*\s*(?:R\$\s*)?([\d.,]+)/gi;
+        let variantMatch;
+        while ((variantMatch = variantPattern.exec(description)) !== null) {
+            const label = variantMatch[1].trim();
+            let price = variantMatch[2].trim();
+            // Add R$ if not present
+            if (!price.startsWith('R$')) {
+                price = `R$ ${price}`;
+            }
+            extractedVariants.push({ label, price });
+        }
+        
+        // If we found variants, don't extract a single price
+        if (extractedVariants.length === 0) {
+            // Try 💰 R$ format first
+            let priceMatch = description.match(/💰\s*(R\$\s*[\d.,]+)/i);
             if (priceMatch) {
-                extractedPrice = `R$ ${priceMatch[1]}`;
+                extractedPrice = priceMatch[1];
             } else {
-                // Try "XX,XX à vista" pattern (without R$)
-                priceMatch = description.match(/([\d]+[.,][\d]{2})\s*à vista/i);
+                // Try "R$ XX,XX" or "XX,XX à vista" patterns
+                priceMatch = description.match(/R\$\s*([\d.,]+)/i);
                 if (priceMatch) {
                     extractedPrice = `R$ ${priceMatch[1]}`;
+                } else {
+                    // Try "XX,XX à vista" pattern (without R$)
+                    priceMatch = description.match(/([\d]+[.,][\d]{2})\s*à vista/i);
+                    if (priceMatch) {
+                        extractedPrice = `R$ ${priceMatch[1]}`;
+                    }
                 }
             }
         }
     }
     
-    // Extract coupon info
+    // Extract coupon info - also look for coupon codes like "use o cupom MELIVERAO"
     let extractedCoupon = '';
-    // Try to match "R$ 100 OFF a partir de R$ 899"
-    const couponDetailsMatch = description.match(/R\$\s*\d+\s*OFF[^,\n]*(a partir de[^,\n]*)?/i);
-    if (couponDetailsMatch) {
-        extractedCoupon = couponDetailsMatch[0].trim();
-    } else {
-        // Try to match "Resgate o cupom R$ 100 OFF: https://..."
-        const couponWithValueMatch = description.match(/🎟[️\s]*(?:Resgate o cupom)?\s*([R\$\s\d.,]+\s*OFF)\s*[:\s]+(https:\/\/s\.shopee\.com\.br\/[^\s\n]+)/i);
-        if (couponWithValueMatch) {
-            extractedCoupon = `${couponWithValueMatch[1]}: ${couponWithValueMatch[2]}`;
+    
+    // First try to find a coupon CODE (like MELIVERAO)
+    const couponCodePatterns = [
+        /(?:use|com)\s+o?\s*cupom\s+[`'"]*([A-Z0-9]{4,20})[`'"]*(?:\s|$)/i,
+        /cupom[:\s]+[`'"]*([A-Z0-9]{4,20})[`'"]*(?:\s|$)/i,
+    ];
+    
+    for (const pattern of couponCodePatterns) {
+        const match = description.match(pattern);
+        if (match && match[1] && match[1].toLowerCase() !== 'resgate' && match[1].toLowerCase() !== 'disponivel') {
+            extractedCoupon = match[1].toUpperCase();
+            break;
+        }
+    }
+    
+    // If no code found, try other patterns
+    if (!extractedCoupon) {
+        // Try to match "R$ 100 OFF a partir de R$ 899"
+        const couponDetailsMatch = description.match(/R\$\s*\d+\s*OFF[^,\n]*(a partir de[^,\n]*)?/i);
+        if (couponDetailsMatch) {
+            extractedCoupon = couponDetailsMatch[0].trim();
         } else {
+            // Try to match coupon URL from Shopee
             const couponUrlMatch = description.match(/🎟[️\s]*(?:Cupom[:\s]*)?(?:Resgate[^:]*:\s*)?(https:\/\/s\.shopee\.com\.br\/[^\s\n]+)/i);
             if (couponUrlMatch) {
                 extractedCoupon = couponUrlMatch[1];
-            } else {
-                // Try to find coupon code
-                const couponCodeMatch = description.match(/🎟[️\s]*Cupom[:\s]+([A-Z0-9]{4,20})/i);
-                if (couponCodeMatch && couponCodeMatch[1].toLowerCase() !== 'resgate') {
-                    extractedCoupon = couponCodeMatch[1];
-                }
             }
         }
     }
@@ -197,7 +252,8 @@ function fallbackClassification(title = '', description = '') {
         for (const [cat, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
             if (cat === 'Outros' || cat === 'Cupom') continue;
             for (const keyword of keywords) {
-                if (text.includes(keyword)) {
+                // Normalize keyword too for accent-insensitive matching
+                if (text.includes(normalizeText(keyword))) {
                     category = cat;
                     break;
                 }
@@ -213,6 +269,7 @@ function fallbackClassification(title = '', description = '') {
         title: extractedTitle, 
         price: extractedPrice, 
         coupon: extractedCoupon, 
+        variants: extractedVariants,
         category: mappedCategory,
         isCouponMessage 
     });
@@ -221,6 +278,7 @@ function fallbackClassification(title = '', description = '') {
         title: extractedTitle || title || '',
         price: extractedPrice || '',
         coupon: extractedCoupon || '',
+        variants: extractedVariants,
         category: mappedCategory,
         confidence: 60,
         isCouponMessage: isCouponMessage,
@@ -235,64 +293,81 @@ MESSAGE:
 ${description}
 
 FIRST, determine the MESSAGE TYPE:
-1. COUPON MESSAGE - A message announcing a coupon/discount code that users can use when shopping. Signs:
-   - Contains phrases like "tem cupom", "cupom disponível", "use o cupom", "cupom de R$"
-   - Talks about discounts like "R$ X OFF"
-   - Has a generic link for users to search products (not a specific product)
-   - Does NOT mention a specific product name
 
-2. PRODUCT MESSAGE - A message promoting a specific product. Signs:
-   - Names a specific product (e.g., "Xiaomi Redmi Note 12", "SSD Kingston 480GB")
+1. COUPON MESSAGE (isCouponMessage=true) - A GENERIC announcement about coupons available. Signs:
+   - Does NOT have a specific product with a price
+   - Is announcing that coupons will be available (e.g., "meia noite tem cupom")
+   - Has a generic search link, NOT a direct product link
+
+2. PRODUCT MESSAGE (isCouponMessage=false) - A message promoting a SPECIFIC PRODUCT. Signs:
+   - Names a specific product
    - Shows a specific price for that product
-   - Has a direct link to buy that product
+   - Has a direct link to buy that SPECIFIC product
+   - MAY include a coupon code to use on checkout - this does NOT make it a "coupon message"!
+
+IMPORTANT: Check if the message has MULTIPLE VARIANTS (different sizes/colors/versions with different prices).
+Example: "30ml — R$ 186" and "100ml — R$ 289" are TWO VARIANTS of the same product.
 
 EXTRACTION RULES:
 
-FOR COUPON MESSAGES:
-- "title": Use a descriptive title like "Cupom Shopee R$ X OFF" or "Cupom de Desconto" or the main message headline
-- "price": Leave EMPTY (coupons don't have a price)
-- "coupon": The coupon VALUE or CODE mentioned (e.g., "R$ 100 OFF a partir de R$ 899")
-- "description": Preserve the FULL ORIGINAL MESSAGE with all important details about when/how to use the coupon
-- "category": "Cupom"
-- "isCouponMessage": true
-
 FOR PRODUCT MESSAGES:
 - "title": The product name (clean, without emojis)
-- "price": The price in format "R$ X,XXX"
-- "coupon": Any coupon code/URL if present, empty string if not
-- "description": Empty string (we'll format it ourselves)
-- "category": Classify into one of these:
+- "price": The LOWEST price OR leave empty if there are variants
+- "coupon": Any coupon code mentioned, empty if none
+- "variants": Array of variants if the product has multiple sizes/options with different prices. Each variant: {"label": "30ml", "price": "R$ 186"}
+  * If no variants, use empty array []
+  * IMPORTANT: Extract ALL variants with their labels and prices!
+- "category": Classify the PRODUCT into one of these:
   * Smartphone, Monitor, Teclados, Mouse e Mousepad, Headset e Fone
   * Processador, Placa de Vídeo, Placa Mãe, Memória Ram, Armazenamento
   * Fonte, Gabinete, Refrigeração, Pc e Notebook, Consoles
   * Áudio, Mesas, Acessórios, Eletrônicos, Variados
 - "isCouponMessage": false
+- "confidence": 0-100
 
-IMPORTANT:
-- "confidence": 0-100 (how confident you are in the classification)
-- For COUPON messages, include ALL the original details in "description" field
-- Do NOT strip important information from coupon messages
+FOR COUPON MESSAGES:
+- "title": Descriptive title like "Cupom Shopee R$ X OFF"
+- "price": Empty
+- "coupon": The coupon VALUE
+- "variants": []
+- "category": "Cupom"
+- "isCouponMessage": true
 
-EXAMPLE 1 (COUPON MESSAGE):
-Input: "Meia noite tem cupom Shopee\\n- Provavelmente será de R$ 100 OFF a partir de R$ 899\\n🎯 Pesquise: https://..."
+EXAMPLE 1 (PRODUCT WITH VARIANTS):
+Input: "Perfume Calvin Klein\\n30ml — R$ 186\\nhttps://...\\n100ml — R$ 289\\nhttps://..."
 Output: {
-  "title": "Cupom Shopee R$ 100 OFF",
+  "title": "Perfume Calvin Klein",
   "price": "",
-  "coupon": "R$ 100 OFF a partir de R$ 899",
-  "description": "Meia noite tem cupom Shopee\\n\\n- Provavelmente será de R$ 100 OFF a partir de R$ 899, ideal para itens mais caros\\n\\n🎯 Pesquise seus produtos preferidos",
-  "category": "Cupom",
-  "isCouponMessage": true,
+  "coupon": "",
+  "variants": [
+    {"label": "30ml", "price": "R$ 186"},
+    {"label": "100ml", "price": "R$ 289"}
+  ],
+  "category": "Variados",
+  "isCouponMessage": false,
   "confidence": 95
 }
 
-EXAMPLE 2 (PRODUCT MESSAGE):
-Input: "🛒 Xiaomi Redmi Note 12 128GB\\n💰 R$ 899,00\\n🔗 https://..."
+EXAMPLE 2 (SIMPLE PRODUCT):
+Input: "SSD Kingston 480GB\\nR$ 199,90\\nhttps://..."
 Output: {
-  "title": "Xiaomi Redmi Note 12 128GB",
-  "price": "R$ 899,00",
+  "title": "SSD Kingston 480GB",
+  "price": "R$ 199,90",
   "coupon": "",
-  "description": "",
-  "category": "Smartphone",
+  "variants": [],
+  "category": "Armazenamento",
+  "isCouponMessage": false,
+  "confidence": 95
+}
+
+EXAMPLE 3 (PRODUCT WITH COUPON):
+Input: "Lavadora Lava Jato\\n- use o cupom MELIVERAO\\n92,30 à vista\\nhttps://..."
+Output: {
+  "title": "Lavadora Lava Jato",
+  "price": "R$ 92,30",
+  "coupon": "MELIVERAO",
+  "variants": [],
+  "category": "Eletrônicos",
   "isCouponMessage": false,
   "confidence": 95
 }
@@ -331,7 +406,7 @@ Return ONLY the JSON object.`;
 
         // Validação de qualidade dos dados
         const hasTitle = parsed.title && parsed.title.length > 5;
-        const hasPrice = parsed.price && parsed.price.includes('R$');
+        const hasPrice = (parsed.price && parsed.price.includes('R$')) || (parsed.variants && parsed.variants.length > 0);
         
         // Se dados importantes estão vazios e ainda temos retries, tenta novamente
         if ((!hasTitle || !hasPrice) && retryCount < 2) {
@@ -347,6 +422,7 @@ Return ONLY the JSON object.`;
             title: parsed.title || '',
             price: parsed.price || '',
             coupon: parsed.coupon || '',
+            variants: parsed.variants || [],
             category: mappedCategory,
             confidence: Number(parsed.confidence),
             isCouponMessage: !!parsed.isCouponMessage,

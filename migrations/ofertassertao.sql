@@ -112,7 +112,6 @@ INSERT IGNORE INTO forbidden_words (word) VALUES
 
 -- Inserir configurações padrão do General
 INSERT INTO config (key_name, value_text) VALUES 
-    ('GENERAL_THREAD_ID', '1'),
     ('SEND_TO_GENERAL', '1')
 ON DUPLICATE KEY UPDATE key_name = key_name;
 

@@ -219,47 +219,101 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
             // Standard product message format
             messageText = `${productName}\n\n`;
             
-            if (price) {
-                messageText += `💰 ${price}\n`;
-            }
+            // Check if we have variants (multiple sizes/options with different prices)
+            const variants = ai.variants || [];
             
-            // If cupomInfo is a URL, convert to affiliate link
-            if (cupomInfo) {
-                if (cupomInfo.includes('http')) {
-                    const match = cupomInfo.match(/^(.*?):\s*(https?:\/\/[^\s]+)$/);
-                    if (match) {
-                        const discountValue = match[1].trim();
-                        const cupomUrl = match[2];
-                        const cupomAffiliateUrl = affiliateUrls[cupomUrl] || cupomUrl;
-                        messageText += `🎟️ Cupom ${discountValue}: ${cupomAffiliateUrl}\n`;
-                    } else {
-                        const cupomAffiliateUrl = affiliateUrls[cupomInfo] || cupomInfo;
-                        messageText += `🎟️ Cupom: ${cupomAffiliateUrl}\n`;
+            if (variants.length > 0) {
+                // Product with variants - show each variant with its price and link
+                console.log(`[7/8] 📦 Produto com ${variants.length} variantes detectadas`);
+                
+                // Match variants with URLs if possible
+                const urlList = Object.values(affiliateUrls).filter(u => u !== groupLink);
+                
+                for (let i = 0; i < variants.length; i++) {
+                    const variant = variants[i];
+                    const variantUrl = urlList[i] || '';
+                    
+                    // More compact format: variant info and link on separate lines
+                    messageText += `📦 ${variant.label} — ${variant.price}`;
+                    if (variantUrl) {
+                        messageText += `\n${variantUrl}`;
                     }
-                } else {
-                    messageText += `🎟️ Cupom: ${cupomInfo}\n`;
-                }
-            }
-            
-            // Add all product links (exclude group link)
-            messageText += `\n`;
-            for (const url of allAffiliateUrls) {
-                let cupomActualUrl = null;
-                if (cupomInfo && cupomInfo.includes('http')) {
-                    const urlMatch = cupomInfo.match(/(https?:\/\/[^\s]+)/);
-                    if (urlMatch) cupomActualUrl = urlMatch[1];
+                    messageText += '\n\n';
                 }
                 
-                if (cupomActualUrl && affiliateUrls[cupomActualUrl] === url) continue;
-                if (url === groupLink) continue;
-                messageText += `🔗 ${url}\n`;
+                // Add coupon if present
+                if (cupomInfo && !cupomInfo.includes('http')) {
+                    messageText += `🎟️ Cupom: ${cupomInfo}\n`;
+                }
+            } else {
+                // Simple product - single price and links
+                if (price) {
+                    messageText += `💰 ${price}\n`;
+                }
+                
+                // If cupomInfo is a URL, convert to affiliate link
+                if (cupomInfo) {
+                    if (cupomInfo.includes('http')) {
+                        const match = cupomInfo.match(/^(.*?):\s*(https?:\/\/[^\s]+)$/);
+                        if (match) {
+                            const discountValue = match[1].trim();
+                            const cupomUrl = match[2];
+                            const cupomAffiliateUrl = affiliateUrls[cupomUrl] || cupomUrl;
+                            messageText += `🎟️ Cupom ${discountValue}: ${cupomAffiliateUrl}\n`;
+                        } else {
+                            const cupomAffiliateUrl = affiliateUrls[cupomInfo] || cupomInfo;
+                            messageText += `🎟️ Cupom: ${cupomAffiliateUrl}\n`;
+                        }
+                    } else {
+                        messageText += `🎟️ Cupom: ${cupomInfo}\n`;
+                    }
+                }
+                
+                // Add all product links (exclude group link)
+                messageText += `\n`;
+                for (const url of allAffiliateUrls) {
+                    let cupomActualUrl = null;
+                    if (cupomInfo && cupomInfo.includes('http')) {
+                        const urlMatch = cupomInfo.match(/(https?:\/\/[^\s]+)/);
+                        if (urlMatch) cupomActualUrl = urlMatch[1];
+                    }
+                    
+                    if (cupomActualUrl && affiliateUrls[cupomActualUrl] === url) continue;
+                    if (url === groupLink) continue;
+                    messageText += `🔗 ${url}\n`;
+                }
             }
             
-            messageText += `\n📢 Mais ofertas em: ${groupLink}`;
+            messageText += `📢 Mais ofertas em: ${groupLink}`;
         }
 
         // Sanitize the caption to ensure valid UTF-8
-        const caption = sanitizeUtf8(messageText);
+        let caption = sanitizeUtf8(messageText);
+        
+        // Telegram caption limit is 1024 characters for photos
+        // If caption is too long, truncate it intelligently
+        const MAX_CAPTION_LENGTH = 1024;
+        if (caption.length > MAX_CAPTION_LENGTH) {
+            logger.warn(`Caption too long (${caption.length} chars), truncating to ${MAX_CAPTION_LENGTH}`);
+            console.log(`[7/8] ⚠️ Mensagem muito longa (${caption.length}), truncando para ${MAX_CAPTION_LENGTH} caracteres`);
+            
+            // Find the group link section and preserve it
+            const groupLinkSection = `\n\n📢 Mais ofertas em: ${groupLink}`;
+            const maxContentLength = MAX_CAPTION_LENGTH - groupLinkSection.length - 10; // 10 chars buffer
+            
+            // Truncate content and add ellipsis
+            let truncatedCaption = caption.substring(0, maxContentLength);
+            
+            // Try to cut at last complete line
+            const lastNewline = truncatedCaption.lastIndexOf('\n');
+            if (lastNewline > maxContentLength * 0.7) {
+                truncatedCaption = truncatedCaption.substring(0, lastNewline);
+            }
+            
+            // Add group link at the end
+            caption = truncatedCaption + '\n...' + groupLinkSection;
+        }
+        
         logger.info(`Caption generated: ${caption.length} chars`);
         console.log(`[7/8] ✅ Mensagem construída, tamanho: ${caption.length} caracteres`);
 
