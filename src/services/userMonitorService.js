@@ -294,12 +294,8 @@ async function startMonitoring() {
     }
 
     try {
-        // Get monitored groups from database
-        const monitoredGroups = await Monitoring.getAll();
-        const monitoredIds = monitoredGroups.map(g => g.chat_id);
-
-        logger.info(`Starting monitoring for ${monitoredIds.length} groups`);
-        console.log(`[UserMonitor] 📡 Iniciando monitoramento de ${monitoredIds.length} grupos`);
+        logger.info(`Starting monitoring for all groups in database`);
+        console.log(`[UserMonitor] 📡 Iniciando monitoramento de todos os grupos cadastrados`);
 
         // Add message handler
         client.addEventHandler(async (event) => {
@@ -314,12 +310,12 @@ async function startMonitoring() {
                 // Format ID for comparison (add -100 prefix for supergroups/channels)
                 const formattedId = `-100${chatId}`;
                 
-                // Check if this chat is monitored
-                const isMonitored = monitoredIds.includes(formattedId) || 
-                                   monitoredIds.includes(chatId.toString()) ||
-                                   monitoredIds.includes(`-${chatId}`);
+                // Check in database if this chat is monitored (dynamic check)
+                const isMonitoredInDb = await Monitoring.isMonitored(formattedId) || 
+                                        await Monitoring.isMonitored(chatId.toString()) ||
+                                        await Monitoring.isMonitored(`-${chatId}`);
 
-                if (!isMonitored) return;
+                if (!isMonitoredInDb) return;
 
                 const text = message.text || '';
                 
