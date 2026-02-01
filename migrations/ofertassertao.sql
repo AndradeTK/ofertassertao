@@ -110,6 +110,12 @@ INSERT IGNORE INTO forbidden_words (word) VALUES
     ('sem estoque'),
     ('fora de estoque');
 
+-- Inserir configurações padrão do General
+INSERT INTO config (key_name, value_text) VALUES 
+    ('GENERAL_THREAD_ID', '1'),
+    ('SEND_TO_GENERAL', '1')
+ON DUPLICATE KEY UPDATE key_name = key_name;
+
 -- Inserir todas as categorias utilizadas pelo sistema
 -- IMPORTANTE: Os thread_ids devem ser configurados com os IDs reais dos tópicos do Telegram
 INSERT INTO categories (name_ia, thread_id) VALUES 

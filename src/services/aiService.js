@@ -75,23 +75,59 @@ function fallbackClassification(title = '', description = '') {
     
     const isCouponMessage = couponIndicators.some(indicator => text.includes(indicator));
     
-    // Extract title - try multiple approaches
+    // Extract title - try multiple approaches to find the PRODUCT NAME, not marketing phrases
     const lines = description.split('\n').map(l => l.trim()).filter(l => l && !l.includes('http'));
     let extractedTitle = '';
     
-    // First try to find a product name line (longer text without just emojis)
+    // Common brand names to help identify product lines
+    const brandPatterns = /\b(gillette|samsung|apple|xiaomi|motorola|lg|sony|philips|jbl|logitech|nike|adidas|puma|havaianas|oster|mondial|arno|electrolux|brastemp|consul|intelbras|positivo|dell|hp|lenovo|asus|acer|kindle|echo|alexa|fire\s*tv|chromecast|roku|playstation|xbox|nintendo|gopro|canon|nikon|fuji|dji|garmin|fitbit|amazfit|redmi|poco|realme|oppo|oneplus|huawei|honor|iphone|ipad|macbook|airpods|galaxy|pixel|moto\s*g|moto\s*e|edge|razr)/i;
+    
+    // Patterns that indicate marketing phrases (NOT product names)
+    const marketingPatterns = /^(não|nao|super|mega|ultra|incrível|incrivel|aproveite|oferta|promoção|promocao|desconto|imperdível|imperdivel|corra|só\s*hoje|so\s*hoje|últimas|ultimas|limitado|exclusivo|melhor|ótimo|otimo|perfeito|sensacional|maravilh|fantástic|fantastic|top\s*demais|bom\s*demais|vale\s*a\s*pena|recomendo|compre|garanta|adquira|leve|confira|veja|olha|gente|pessoal|galera)/i;
+    
+    // First pass: try to find a line with a brand name (most likely product name)
     for (const line of lines) {
-        // Skip lines that are just emojis, very short, or prices
         const cleanLine = line.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim();
-        if (cleanLine.length > 10 && !cleanLine.match(/^[\d,.]+\s*(à vista|reais)?$/i)) {
+        if (cleanLine.length > 8 && brandPatterns.test(cleanLine)) {
             extractedTitle = cleanLine;
             break;
         }
     }
     
-    // Fallback to first non-empty line
+    // Second pass: if no brand found, look for product-like lines (skip marketing phrases)
+    if (!extractedTitle) {
+        for (const line of lines) {
+            const cleanLine = line.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim();
+            
+            // Skip if too short, is a price, or looks like marketing
+            if (cleanLine.length < 10) continue;
+            if (cleanLine.match(/^[\d,.]+\s*(à vista|reais)?$/i)) continue;
+            if (marketingPatterns.test(cleanLine)) continue;
+            if (cleanLine === cleanLine.toUpperCase() && cleanLine.length < 50) continue; // Skip ALL CAPS short phrases
+            
+            // Skip lines that start with - or • (usually bullet points/features)
+            if (cleanLine.match(/^[-•*]/)) continue;
+            
+            extractedTitle = cleanLine;
+            break;
+        }
+    }
+    
+    // Third pass: if still nothing, just take any line with decent length that's not the first
+    if (!extractedTitle && lines.length > 1) {
+        for (let i = 1; i < lines.length; i++) {
+            const cleanLine = lines[i].replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim();
+            if (cleanLine.length > 15 && !cleanLine.match(/^[\d,.]+/)) {
+                extractedTitle = cleanLine;
+                break;
+            }
+        }
+    }
+    
+    // Final fallback: use first line but warn
     if (!extractedTitle && lines.length > 0) {
-        extractedTitle = lines[0].replace(/[🛒🔥💥🚨🎯👍👎]/g, '').trim();
+        extractedTitle = lines[0].replace(/[🛒🔥💥🚨🎯👍👎😍🤩💪]/g, '').trim();
+        console.warn(`⚠️ Fallback: usando primeira linha como título: "${extractedTitle}"`);
     }
     
     // For coupon messages, use a better title

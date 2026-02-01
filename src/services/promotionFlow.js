@@ -277,8 +277,11 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
         if (chatIdNum > 0) {
             logger.warn(`⚠️ GROUP_CHAT_ID (${groupChatId}) é positivo - isso parece ser um chat privado, não um grupo! IDs de grupos são negativos (ex: -1001234567890)`);
             console.warn(`⚠️ ATENÇÃO: GROUP_CHAT_ID (${groupChatId}) é positivo - isso indica um CHAT PRIVADO, não um grupo!`);
-            console.warn(`   Para corrigir: use /get_chat_id dentro do GRUPO e atualize nas Configurações.`);
+            console.warn(`   Para corrigir: use /getchatid dentro do GRUPO e atualize nas Configurações.`);
         }
+
+        // Get General topic configuration
+        const sendToGeneral = await Config.getSendToGeneral();
         
         const inviteLink = process.env.GROUP_INVITE_LINK || process.env.GROUP_LINK || '';
         const inlineKeyboard = [];
@@ -290,8 +293,8 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
         logger.info(`Message built: ${caption.length} chars`);
         console.log(`[7/8] ✅ Mensagem construída, tamanho: ${caption.length} caracteres`);
 
-        logger.info(`[8/8] Sending to group ${groupChatId}, threads: 1 (General) + ${threadId}`);
-        console.log(`[8/8] Enviando para groupChatId: ${groupChatId}, General (1) + Categoria: ${threadId}`);
+        logger.info(`[8/8] Sending to group ${groupChatId}, General: ${sendToGeneral ? 'enabled' : 'disabled'}, Category: ${threadId}`);
+        console.log(`[8/8] Enviando para groupChatId: ${groupChatId}, General: ${sendToGeneral ? 'ativado' : 'desativado'}, Categoria: ${threadId}`);
 
         // Use attached photo (file_id) or meta image (URL)
         const imageSource = attachedPhotoUrl || meta.image;
@@ -301,37 +304,24 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
             logger.info('[8/8] Sending with image...');
             console.log(`[8/8] Enviando com imagem...`);
             
-            // 1. ALWAYS send to General topic (thread_id: 1)
-            if (groupChatId) {
+            // 1. Send to General (main chat, no thread_id)
+            if (groupChatId && sendToGeneral) {
                 try {
                     await bot.telegram.sendPhoto(groupChatId, imageSource, {
                         caption,
                         parse_mode: 'HTML',
-                        message_thread_id: 1,
                         reply_markup: replyMarkup
                     });
-                    logger.info('Sent to General (1) with image');
-                    console.log(`[8/8] ✅ Enviado para General (1) com imagem`);
+                    logger.info('Sent to General (main chat) with image');
+                    console.log(`[8/8] ✅ Enviado para General (chat principal) com imagem`);
                 } catch (err) {
-                    logger.warn(`Failed to send to General (1): ${err.message}`);
-                    console.warn(`⚠️ Erro ao enviar para General (1): ${err.message}`);
-                    try {
-                        await bot.telegram.sendPhoto(groupChatId, imageSource, {
-                            caption,
-                            parse_mode: 'HTML',
-                            reply_markup: replyMarkup
-                        });
-                        logger.info('Sent to main group (no thread) with image');
-                        console.log(`[8/8] ✅ Enviado para grupo principal (sem thread) com imagem`);
-                    } catch (err2) {
-                        logger.error(`Failed to send to group: ${err2.message}`);
-                        console.error(`❌ Erro ao enviar para grupo: ${err2.message}`);
-                    }
+                    logger.warn(`Failed to send to General: ${err.message}`);
+                    console.warn(`⚠️ Erro ao enviar para General: ${err.message}`);
                 }
             }
 
-            // 2. Send to specific category topic (if threadId exists and is different from General)
-            if (threadId && groupChatId && threadId !== 'null' && threadId !== null && Number(threadId) !== 1) {
+            // 2. Send to specific category topic (if threadId exists)
+            if (threadId && groupChatId && threadId !== 'null' && threadId !== null) {
                 try {
                     await bot.telegram.sendPhoto(groupChatId, imageSource, {
                         caption,
@@ -350,35 +340,23 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
             logger.info('[8/8] Sending without image (text only)...');
             console.log(`[8/8] Enviando sem imagem (texto)...`);
             
-            // 1. ALWAYS send to General topic (thread_id: 1)
-            if (groupChatId) {
+            // 1. Send to General (main chat, no thread_id)
+            if (groupChatId && sendToGeneral) {
                 try {
                     await bot.telegram.sendMessage(groupChatId, caption, { 
                         parse_mode: 'HTML', 
-                        message_thread_id: 1,
                         reply_markup: replyMarkup 
                     });
-                    logger.info('Sent to General (1) without image');
-                    console.log(`[8/8] ✅ Enviado para General (1) sem imagem`);
+                    logger.info('Sent to General (main chat) without image');
+                    console.log(`[8/8] ✅ Enviado para General (chat principal) sem imagem`);
                 } catch (err) {
-                    logger.warn(`Failed to send to General (1): ${err.message}`);
-                    console.warn(`⚠️ Erro ao enviar para General (1): ${err.message}`);
-                    try {
-                        await bot.telegram.sendMessage(groupChatId, caption, { 
-                            parse_mode: 'HTML', 
-                            reply_markup: replyMarkup 
-                        });
-                        logger.info('Sent to main group (no thread) without image');
-                        console.log(`[8/8] ✅ Enviado para grupo principal (sem thread) sem imagem`);
-                    } catch (err2) {
-                        logger.error(`Failed to send to group: ${err2.message}`);
-                        console.error(`❌ Erro ao enviar para grupo: ${err2.message}`);
-                    }
+                    logger.warn(`Failed to send to General: ${err.message}`);
+                    console.warn(`⚠️ Erro ao enviar para General: ${err.message}`);
                 }
             }
             
-            // 2. Send to specific category topic (if threadId exists and is different from General)
-            if (threadId && groupChatId && threadId !== 'null' && threadId !== null && Number(threadId) !== 1) {
+            // 2. Send to specific category topic (if threadId exists)
+            if (threadId && groupChatId && threadId !== 'null' && threadId !== null) {
                 try {
                     await bot.telegram.sendMessage(groupChatId, caption, { 
                         parse_mode: 'HTML', 
