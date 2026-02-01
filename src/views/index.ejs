@@ -1,0 +1,1899 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ofertas do Sertão — Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="shortcut icon" href="/img/logo.png" type="image/x-icon">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        body { font-family: 'Montserrat', sans-serif; }
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(400px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(400px); opacity: 0; }
+        }
+        .toast.hiding {
+            animation: slideOut 0.3s ease-in forwards;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+        .status-dot.online {
+            background-color: #10b981;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+            animation: pulse 2s infinite;
+        }
+        .status-dot.offline {
+            background-color: #ef4444;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Sidebar -->
+    <div class="flex h-screen overflow-hidden">
+        <aside class="w-64 bg-gradient-to-b from-blue-900 to-blue-800 text-white flex-shrink-0 overflow-y-auto">
+            <div class="p-6">
+                <div class="flex items-center gap-3 mb-8">
+                    <img src="/img/logo.png" alt="Logo" id="main-logo" class="h-12 w-12 rounded-lg shadow-lg" />
+                    <div>
+                        <h1 class="text-xl font-bold">Ofertas do Sertão</h1>
+                        <p class="text-xs text-blue-200">Gerenciador de Afiliados</p>
+                    </div>
+                </div>
+                
+                <nav class="space-y-2">
+                    <a href="#" onclick="showTab('dashboard')" class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg bg-blue-700 hover:bg-blue-600 transition-colors">
+                        <i class="fas fa-chart-line w-5"></i>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="#" onclick="showTab('postagem')" class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors">
+                        <i class="fas fa-paper-plane w-5"></i>
+                        <span>Postagem</span>
+                    </a>
+                    <a href="#" onclick="showTab('configuracoes')" class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors">
+                        <i class="fas fa-cog w-5"></i>
+                        <span>Configurações</span>
+                    </a>
+                    <a href="#" onclick="showTab('logs')" class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors">
+                        <i class="fas fa-list w-5"></i>
+                        <span>Logs</span>
+                    </a>
+                    <a href="#" onclick="showTab('scripts')" class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors">
+                        <i class="fas fa-code w-5"></i>
+                        <span>Scripts</span>
+                    </a>
+                </nav>
+
+                <div class="mt-8 pt-6 border-t border-blue-700">
+                    <button onclick="clearCache()" class="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-red-600 hover:bg-red-500 transition-colors">
+                        <i class="fas fa-trash w-5"></i>
+                        <span>Limpar Cache</span>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <!-- Top Bar -->
+            <header class="bg-white shadow-sm px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-2xl font-bold text-gray-800" id="pageTitle">Dashboard</h2>
+                    
+                    <div class="flex items-center gap-6">
+                        <!-- API Status Indicators -->
+                        <div class="flex items-center gap-4 text-sm">
+                            <div class="flex items-center" title="Shopee API">
+                                <span class="status-dot online" id="status-shopee"></span>
+                                <span class="text-gray-600">Shopee <span id="latency-shopee" class="text-xs text-gray-400"></span></span>
+                            </div>
+                            <div class="flex items-center" title="Mercado Livre">
+                                <span class="status-dot online" id="status-ml"></span>
+                                <span class="text-gray-600">ML <span id="latency-ml" class="text-xs text-gray-400"></span></span>
+                            </div>
+                            <div class="flex items-center" title="AliExpress">
+                                <span class="status-dot online" id="status-ali"></span>
+                                <span class="text-gray-600">AliExpress <span id="latency-ali" class="text-xs text-gray-400"></span></span>
+                            </div>
+                            <div class="flex items-center" title="Amazon">
+                                <span class="status-dot online" id="status-amazon"></span>
+                                <span class="text-gray-600">Amazon <span id="latency-amazon" class="text-xs text-gray-400"></span></span>
+                            </div>
+                            <div class="flex items-center" title="Google Gemini IA">
+                                <span class="status-dot online" id="status-ai"></span>
+                                <span class="text-gray-600">IA <span id="latency-ai" class="text-xs text-gray-400"></span></span>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-lg font-medium">
+                            <span class="status-dot online"></span>
+                            <span>Bot Online</span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Content Area -->
+            <main class="flex-1 overflow-y-auto p-6">
+                <!-- Dashboard Tab -->
+                <div id="tab-dashboard" class="tab-content">
+                    <!-- Metrics Cards -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-blue-500">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-gray-600 mb-1">Ofertas Hoje</p>
+                                    <p class="text-3xl font-bold text-gray-800" id="metric-today">0</p>
+                                </div>
+                                <div class="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-tags text-blue-600 text-xl"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-green-500">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-gray-600 mb-1">Canais Ativos</p>
+                                    <p class="text-3xl font-bold text-gray-800" id="metric-channels">0</p>
+                                </div>
+                                <div class="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-satellite-dish text-green-600 text-xl"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-red-500">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-gray-600 mb-1">Erros de Processamento</p>
+                                    <p class="text-3xl font-bold text-gray-800" id="metric-errors">0</p>
+                                </div>
+                                <div class="h-12 w-12 bg-red-100 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-exclamation-triangle text-red-600 text-xl"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                        <div class="bg-white rounded-xl shadow-md p-6">
+                            <h3 class="text-lg font-semibold mb-4">Postagens Semanais</h3>
+                            <div style="height: 300px; position: relative;">
+                                <canvas id="weeklyChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-md p-6">
+                            <h3 class="text-lg font-semibold mb-4">Categorias Mais Ativas</h3>
+                            <div style="height: 300px; position: relative;">
+                                <canvas id="categoryChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Activity -->
+                    <div class="bg-white rounded-xl shadow-md p-6">
+                        <h3 class="text-lg font-semibold mb-4">Atividade Recente</h3>
+                        <div class="space-y-3" id="recentActivity">
+                            <p class="text-gray-500 text-sm">Carregando...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Postagem Tab -->
+                <div id="tab-postagem" class="tab-content hidden">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <!-- Manual Post -->
+                        <div class="lg:col-span-2">
+                            <div class="bg-white rounded-xl shadow-md p-6">
+                                <h3 class="text-xl font-bold mb-6 text-gray-800">Postagem Manual</h3>
+                                
+                                <div class="space-y-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Texto da Oferta</label>
+                                        <textarea 
+                                            id="postContent" 
+                                            rows="8" 
+                                            placeholder="Cole aqui o texto completo da oferta com links..."
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        ></textarea>
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Imagem (opcional)</label>
+                                        <input type="file" id="postImage" accept="image/*" class="w-full px-4 py-3 border border-gray-300 rounded-lg">
+                                    </div>
+
+                                    <div class="flex items-center gap-4">
+                                        <div class="flex-1">
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">Agendar para (opcional)</label>
+                                            <input type="datetime-local" id="scheduleTime" onchange="updateButtonText()" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                        </div>
+                                    </div>
+
+                                    <div class="flex gap-3">
+                                        <button onclick="generatePreview()" class="flex-1 px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg transition-colors">
+                                            <i class="fas fa-eye mr-2"></i>Gerar Preview
+                                        </button>
+                                        <button id="postButton" onclick="postNow()" class="flex-1 px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition-colors">
+                                            <i class="fas fa-paper-plane mr-2"></i>Postar Agora
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Scheduled Posts -->
+                            <div class="bg-white rounded-xl shadow-md p-6 mt-6">
+                                <h3 class="text-xl font-bold mb-4 text-gray-800">Postagens Agendadas</h3>
+                                <div id="scheduledPosts" class="space-y-3">
+                                    <p class="text-gray-500 text-sm">Nenhuma postagem agendada</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Preview Panel -->
+                        <div>
+                            <div class="bg-white rounded-xl shadow-md p-6 sticky top-6">
+                                <h3 class="text-lg font-semibold mb-4">Preview</h3>
+                                <!-- Telegram-style Preview -->
+                                <div id="previewArea" class="border border-gray-200 rounded-lg overflow-hidden min-h-[300px] bg-gradient-to-b from-[#0088cc] to-[#006699]">
+                                    <div class="p-4 text-center text-white/60 text-sm">
+                                        <i class="fas fa-eye text-4xl mb-3 block opacity-50"></i>
+                                        Clique em "Gerar Preview" para visualizar
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Configurações Tab -->
+                <div id="tab-configuracoes" class="tab-content hidden">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- Categories -->
+                        <div class="bg-white rounded-xl shadow-md p-6">
+                            <h3 class="text-xl font-bold mb-6 text-gray-800">Categorias / Tópicos</h3>
+                            
+                            <form onsubmit="addCategory(event)" class="space-y-4 mb-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Nome da Categoria</label>
+                                    <input type="text" id="categoryName" required placeholder="Ex: Smartphone" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Thread ID</label>
+                                    <input type="number" id="categoryThreadId" required placeholder="Ex: 93" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                </div>
+                                <button type="submit" class="w-full px-6 py-3 bg-blue-900 hover:bg-blue-800 text-white font-semibold rounded-lg transition-colors">
+                                    <i class="fas fa-plus mr-2"></i>Adicionar Categoria
+                                </button>
+                            </form>
+
+                            <div class="space-y-2 max-h-80 overflow-y-auto pr-2" id="categoriesList">
+                                <p class="text-gray-500 text-sm">Carregando...</p>
+                            </div>
+                        </div>
+
+                        <!-- Monitored Channels -->
+                        <div class="bg-white rounded-xl shadow-md p-6">
+                            <h3 class="text-xl font-bold mb-6 text-gray-800">Canais Monitorados</h3>
+                            
+                            <form onsubmit="addMonitoring(event)" class="space-y-4 mb-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Chat ID</label>
+                                    <input type="text" id="monitorChatId" required placeholder="-1001234567890" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Nome do Canal</label>
+                                    <input type="text" id="monitorName" required placeholder="Ex: Canal de Ofertas" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                </div>
+                                <button type="submit" class="w-full px-6 py-3 bg-blue-900 hover:bg-blue-800 text-white font-semibold rounded-lg transition-colors">
+                                    <i class="fas fa-plus mr-2"></i>Adicionar Canal
+                                </button>
+                            </form>
+
+                            <div class="space-y-2 max-h-80 overflow-y-auto pr-2" id="monitoringList">
+                                <p class="text-gray-500 text-sm">Carregando...</p>
+                            </div>
+                        </div>
+
+                        <!-- Forbidden Words -->
+                        <div class="bg-white rounded-xl shadow-md p-6 lg:col-span-2">
+                            <h3 class="text-xl font-bold mb-6 text-gray-800">Palavras Proibidas</h3>
+                            <p class="text-sm text-gray-600 mb-4">Produtos contendo estas palavras não serão postados automaticamente</p>
+                            
+                            <form onsubmit="addForbiddenWord(event)" class="flex gap-3 mb-6">
+                                <input type="text" id="forbiddenWord" required placeholder="Ex: esgotado, indisponível" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <button type="submit" class="px-6 py-2 bg-blue-900 hover:bg-blue-800 text-white font-semibold rounded-lg transition-colors">
+                                    <i class="fas fa-ban mr-2"></i>Adicionar
+                                </button>
+                            </form>
+
+                            <div id="forbiddenWordsList" class="flex flex-wrap gap-2">
+                                <span class="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm">Carregando...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SaaS System Settings -->
+                    <div class="bg-white rounded-xl shadow-md p-6 mt-6">
+                        <div class="flex justify-between items-center mb-6 border-b pb-4">
+                            <div>
+                                <h3 class="text-xl font-bold text-gray-800">Confgurações do Sistema</h3>
+                                <p class="text-sm text-gray-500">Gerencie chaves de API, banco de dados e identidade visual</p>
+                            </div>
+                            <button onclick="downloadBackup()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
+                                <i class="fas fa-download mr-2"></i>Exportar Backup
+                            </button>
+                        </div>
+                        
+                        <!-- Configuration Tabs / Sections -->
+                        <div class="space-y-8">
+                            
+                            <!-- Section: Database & Redis -->
+                            <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                <h4 class="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                                    <i class="fas fa-database text-blue-600"></i> Banco de Dados & Redis
+                                </h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div class="md:col-span-2 text-xs text-yellow-600 bg-yellow-50 p-2 rounded">
+                                        <i class="fas fa-exclamation-triangle"></i> 
+                                        Aviso: Alterações aqui salvam no banco, mas pode ser necessário atualizar o arquivo .env manualmente para a conexão inicial.
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">DB Host</label>
+                                        <input type="text" id="setting_DB_HOST" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">DB User</label>
+                                        <input type="text" id="setting_DB_USER" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">DB Password</label>
+                                        <input type="password" id="setting_DB_PASS" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">DB Name</label>
+                                        <input type="text" id="setting_DB_NAME" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Redis URL</label>
+                                        <input type="text" id="setting_REDIS_URL" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Section: Telegram & AI -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                    <h4 class="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                                        <i class="fab fa-telegram text-blue-500"></i> Telegram
+                                    </h4>
+                                    <div class="space-y-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">Bot Token</label>
+                                            <div class="flex gap-2">
+                                                <input type="password" id="setting_TELEGRAM_TOKEN" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg">
+                                                <button onclick="restartBot()" class="px-3 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg" title="Reiniciar Bot">
+                                                    <i class="fas fa-sync-alt"></i>
+                                                </button>
+                                            </div>
+                                            <p class="text-xs text-gray-400 mt-1">Salve e reinicie após alterar.</p>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">Group Chat ID</label>
+                                            <input type="text" id="setting_GROUP_CHAT_ID" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="-100...">
+                                            <p class="text-xs text-gray-400 mt-1">ID do supergrupo (negativo, ex: -1001234567890). Use /get_chat_id no grupo.</p>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">API ID</label>
+                                            <input type="text" id="setting_TELEGRAM_API_ID" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="123456">
+                                            <p class="text-xs text-gray-400 mt-1">Obtenha em <a href="https://my.telegram.org" target="_blank" class="text-blue-500 hover:underline">my.telegram.org</a></p>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">API Hash</label>
+                                            <input type="password" id="setting_TELEGRAM_API_HASH" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                            <p class="text-xs text-gray-400 mt-1">Necessário para monitoramento por conta pessoal</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                    <h4 class="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                                        <i class="fas fa-robot text-purple-600"></i> Inteligência Artificial
+                                    </h4>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Gemini API Key</label>
+                                        <input type="password" id="setting_GEMINI_API_KEY" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Section: User Account Monitor -->
+                            <div class="bg-gradient-to-r from-purple-50 to-blue-50 p-4 rounded-lg border border-purple-200">
+                                <h4 class="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                                    <i class="fas fa-user-secret text-purple-600"></i> Monitoramento por Conta Pessoal
+                                    <span class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full ml-2">MTProto</span>
+                                </h4>
+                                
+                                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-3 mb-4 rounded-r-lg">
+                                    <p class="text-sm text-yellow-800">
+                                        <i class="fas fa-info-circle mr-1"></i>
+                                        Use este recurso para monitorar grupos que não permitem bots. 
+                                        As mensagens serão captadas pela sua conta e enviadas pelo bot.
+                                    </p>
+                                </div>
+
+                                <div id="userMonitorSection">
+                                    <!-- Status -->
+                                    <div class="flex items-center gap-4 mb-4 p-3 bg-white rounded-lg border">
+                                        <div class="flex items-center gap-2">
+                                            <div id="userMonitorStatusDot" class="w-3 h-3 rounded-full bg-gray-400"></div>
+                                            <span id="userMonitorStatusText" class="text-sm text-gray-600">Verificando...</span>
+                                        </div>
+                                        <div class="flex-1"></div>
+                                        <button onclick="checkUserMonitorStatus()" class="text-sm text-blue-600 hover:text-blue-800">
+                                            <i class="fas fa-sync-alt mr-1"></i>Atualizar
+                                        </button>
+                                    </div>
+
+                                    <!-- Login Form (shown when not connected) -->
+                                    <div id="userMonitorLoginForm" class="hidden space-y-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">Número de Telefone</label>
+                                            <div class="flex gap-2">
+                                                <input type="tel" id="userMonitorPhone" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg" placeholder="+55 11 99999-9999">
+                                                <button onclick="startUserMonitorLogin()" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg">
+                                                    <i class="fas fa-paper-plane mr-1"></i>Enviar Código
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div id="userMonitorCodeSection" class="hidden">
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">Código de Verificação</label>
+                                            <div class="flex gap-2">
+                                                <input type="text" id="userMonitorCode" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg" placeholder="12345">
+                                                <button onclick="verifyUserMonitorCode()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
+                                                    <i class="fas fa-check mr-1"></i>Verificar
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div id="userMonitor2FASection" class="hidden">
+                                            <label class="block text-sm font-medium text-gray-700 mb-1">Senha 2FA</label>
+                                            <div class="flex gap-2">
+                                                <input type="password" id="userMonitor2FA" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg" placeholder="Sua senha de dois fatores">
+                                                <button onclick="verifyUserMonitorCode()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
+                                                    <i class="fas fa-check mr-1"></i>Verificar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Connected Panel (shown when connected) -->
+                                    <div id="userMonitorConnectedPanel" class="hidden space-y-4">
+                                        <div class="flex items-center gap-4 p-3 bg-green-50 rounded-lg border border-green-200">
+                                            <i class="fas fa-check-circle text-green-600 text-xl"></i>
+                                            <div>
+                                                <p class="font-medium text-green-800">Conta Conectada</p>
+                                                <p id="userMonitorUserInfo" class="text-sm text-green-600"></p>
+                                            </div>
+                                        </div>
+
+                                        <div class="flex gap-3">
+                                            <button onclick="startUserMonitoring()" id="btnStartMonitoring" class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
+                                                <i class="fas fa-play mr-2"></i>Iniciar Monitoramento
+                                            </button>
+                                            <button onclick="stopUserMonitoring()" id="btnStopMonitoring" class="hidden flex-1 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg">
+                                                <i class="fas fa-pause mr-2"></i>Pausar Monitoramento
+                                            </button>
+                                            <button onclick="logoutUserMonitor()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg">
+                                                <i class="fas fa-sign-out-alt mr-2"></i>Desconectar
+                                            </button>
+                                        </div>
+
+                                        <div class="text-sm text-gray-500">
+                                            <p><i class="fas fa-info-circle mr-1"></i>O monitoramento usa os mesmos grupos configurados na seção "Grupos Monitorados".</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Section: Affiliates -->
+                            <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                <h4 class="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                                    <i class="fas fa-shopping-cart text-green-600"></i> APIs de Afiliados
+                                </h4>
+                                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                    <!-- Shopee -->
+                                    <div class="space-y-3 p-3 bg-white rounded border border-gray-100">
+                                        <h5 class="font-bold text-orange-500 text-sm border-b pb-1 mb-2">Shopee</h5>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-500">App ID</label>
+                                            <input type="text" id="setting_SHOPEE_APP_ID" class="w-full px-3 py-1 border border-gray-300 rounded text-sm">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-500">App Secret</label>
+                                            <input type="password" id="setting_SHOPEE_APP_SECRET" class="w-full px-3 py-1 border border-gray-300 rounded text-sm">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-500">Affiliate ID</label>
+                                            <input type="text" id="setting_SHOPEE_AFFILIATE_ID" class="w-full px-3 py-1 border border-gray-300 rounded text-sm">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-500">API Key</label>
+                                            <input type="password" id="setting_SHOPEE_API_KEY" class="w-full px-3 py-1 border border-gray-300 rounded text-sm">
+                                        </div>
+                                    </div>
+
+                                    <!-- Mercado Livre -->
+                                    <div class="space-y-3 p-3 bg-white rounded border border-gray-100">
+                                        <h5 class="font-bold text-yellow-500 text-sm border-b pb-1 mb-2">Mercado Livre</h5>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-500">Tag de Afiliado</label>
+                                            <input type="text" id="setting_ML_AFFILIATE_TAG" placeholder="bryanandradetk" class="w-full px-3 py-1 border border-gray-300 rounded text-sm">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-500">Cookies (para Short Links)</label>
+                                            <textarea id="setting_ML_COOKIES" rows="3" placeholder="_d2id=xxx; _csrf=xxx; ssid=xxx; ..." class="w-full px-3 py-1 border border-gray-300 rounded text-sm font-mono text-xs"></textarea>
+                                            <p class="text-xs text-gray-400 mt-1"><i class="fas fa-info-circle"></i> Copie os cookies do navegador logado no ML para gerar links curtos (mercadolivre.com/sec/xxx)</p>
+                                        </div>
+                                    </div>
+
+                                    <!-- AliExpress -->
+                                    <div class="space-y-3 p-3 bg-white rounded border border-gray-100">
+                                        <h5 class="font-bold text-red-500 text-sm border-b pb-1 mb-2">AliExpress</h5>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-500">App Key</label>
+                                            <input type="text" id="setting_ALIEXPRESS_APP_KEY" class="w-full px-3 py-1 border border-gray-300 rounded text-sm">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-500">App Secret</label>
+                                            <input type="password" id="setting_ALIEXPRESS_APP_SECRET" class="w-full px-3 py-1 border border-gray-300 rounded text-sm">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-500">Tracking ID</label>
+                                            <input type="text" id="setting_ALIEXPRESS_TRACKING_ID" class="w-full px-3 py-1 border border-gray-300 rounded text-sm">
+                                        </div>
+                                    </div>
+
+                                    <!-- Amazon -->
+                                    <div class="space-y-3 p-3 bg-white rounded border border-gray-100">
+                                        <h5 class="font-bold text-yellow-600 text-sm border-b pb-1 mb-2">Amazon</h5>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-500">Tracking ID (Tag)</label>
+                                            <input type="text" id="setting_AMAZON_TRACKING_ID" placeholder="ofertasdoesqu-20" class="w-full px-3 py-1 border border-gray-300 rounded text-sm">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-500">Cookies do SiteStripe (para Short Links)</label>
+                                            <textarea id="setting_AMAZON_COOKIES" rows="3" placeholder="session-id=xxx; ubid-acbbr=xxx; at-acbbr=xxx; ..." class="w-full px-3 py-1 border border-gray-300 rounded text-sm font-mono text-xs"></textarea>
+                                            <p class="text-xs text-gray-400 mt-1"><i class="fas fa-info-circle"></i> Copie os cookies do navegador logado no Amazon Associates para gerar links curtos (amzn.to)</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Affiliate Platform Toggles -->
+                                <div class="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                    <h5 class="font-semibold text-blue-800 mb-4 flex items-center gap-2">
+                                        <i class="fas fa-toggle-on text-blue-600"></i> Ativar/Desativar Plataformas
+                                    </h5>
+                                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        <label class="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:border-orange-400 transition-colors">
+                                            <input type="checkbox" id="setting_AFFILIATE_SHOPEE_ENABLED" class="w-5 h-5 text-orange-500 rounded">
+                                            <span class="font-medium text-gray-700">Shopee</span>
+                                        </label>
+                                        <label class="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:border-yellow-400 transition-colors">
+                                            <input type="checkbox" id="setting_AFFILIATE_ML_ENABLED" class="w-5 h-5 text-yellow-500 rounded">
+                                            <span class="font-medium text-gray-700">Mercado Livre</span>
+                                        </label>
+                                        <label class="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:border-red-400 transition-colors">
+                                            <input type="checkbox" id="setting_AFFILIATE_ALIEXPRESS_ENABLED" class="w-5 h-5 text-red-500 rounded">
+                                            <span class="font-medium text-gray-700">AliExpress</span>
+                                        </label>
+                                        <label class="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:border-yellow-500 transition-colors">
+                                            <input type="checkbox" id="setting_AFFILIATE_AMAZON_ENABLED" class="w-5 h-5 text-yellow-600 rounded">
+                                            <span class="font-medium text-gray-700">Amazon</span>
+                                        </label>
+                                    </div>
+                                    <p class="text-xs text-blue-600 mt-3"><i class="fas fa-info-circle"></i> Desativando uma plataforma, os links dessa loja não serão convertidos para afiliados.</p>
+                                </div>
+                            </div>
+
+                            <!-- Visual Identity -->
+                            <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                <h4 class="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                                    <i class="fas fa-paint-brush text-pink-500"></i> Identidade Visual
+                                </h4>
+                                
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Logo do Painel</label>
+                                        <div class="flex gap-2 items-center">
+                                            <img src="/img/logo.png" id="preview-logo" class="h-10 w-10 object-contain border rounded p-1 bg-white">
+                                            <input type="file" id="logoInput" accept="image/png, image/jpeg" onchange="uploadLogo()" class="flex-1 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                                        </div>
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Cores do Tema</label>
+                                        <div class="flex gap-4">
+                                            <div class="flex flex-col items-center">
+                                                <input type="color" id="setting_THEME_COLOR_PRIMARY" class="h-10 w-16 border rounded cursor-pointer">
+                                                <span class="text-xs text-gray-500 mt-1">Primária</span>
+                                            </div>
+                                            <div class="flex flex-col items-center">
+                                                <input type="color" id="setting_THEME_COLOR_SECONDARY" class="h-10 w-16 border rounded cursor-pointer">
+                                                <span class="text-xs text-gray-500 mt-1">Secundária</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Fonte (Google Fonts URL)</label>
+                                        <input type="text" id="setting_THEME_FONT_URL" placeholder="https://fonts.googleapis.com/css2?family=Roboto..." class="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm">
+                                        <p class="text-xs text-gray-400 mt-1">Cole a URL completa do Google Fonts</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                        
+                        <div class="mt-8 pt-6 border-t flex justify-end">
+                            <button onclick="saveSettings()" class="px-8 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-colors shadow-lg flex items-center">
+                                <i class="fas fa-save mr-2"></i> Salvar Configurações do Sistema
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Logs Tab -->
+                <div id="tab-logs" class="tab-content hidden">
+                    <div class="bg-white rounded-xl shadow-md p-6">
+                        <div class="flex items-center justify-between mb-6">
+                            <h3 class="text-xl font-bold text-gray-800">Histórico de Processamento</h3>
+                            <button onclick="refreshLogs()" class="px-4 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-lg transition-colors">
+                                <i class="fas fa-sync-alt mr-2"></i>Atualizar
+                            </button>
+                        </div>
+
+                        <div class="space-y-3" id="logsList">
+                            <p class="text-gray-500 text-sm">Carregando logs...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Scripts Tab -->
+                <div id="tab-scripts" class="tab-content hidden">
+                    <div class="bg-white rounded-xl shadow-md p-6">
+                        <div class="flex items-center gap-3 mb-6">
+                            <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                                <i class="fas fa-code text-purple-600 text-xl"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-bold text-gray-800">Scripts Úteis</h3>
+                                <p class="text-sm text-gray-500">Scripts auxiliares para configuração</p>
+                            </div>
+                        </div>
+
+                        <!-- Script para pegar ID do Grupo -->
+                        <div class="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-6 border border-purple-100">
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
+                                    <i class="fab fa-telegram text-white text-lg"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-gray-800">Pegar ID do Grupo (Telegram Web)</h4>
+                                    <p class="text-sm text-gray-500">Script para obter o ID do grupo via console do navegador</p>
+                                </div>
+                            </div>
+
+                            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4 rounded-r-lg">
+                                <div class="flex items-start gap-3">
+                                    <i class="fas fa-exclamation-triangle text-yellow-500 mt-1"></i>
+                                    <div>
+                                        <h5 class="font-semibold text-yellow-800">Como usar:</h5>
+                                        <ol class="text-sm text-yellow-700 mt-2 space-y-1 list-decimal list-inside">
+                                            <li>Abra o <strong>Telegram Web</strong> no navegador</li>
+                                            <li>Entre no grupo que deseja obter o ID</li>
+                                            <li>Pressione <kbd class="bg-gray-200 px-2 py-1 rounded text-xs">F12</kbd> para abrir o DevTools</li>
+                                            <li>Vá na aba <strong>Console</strong></li>
+                                            <li>Cole o script abaixo e pressione <kbd class="bg-gray-200 px-2 py-1 rounded text-xs">Enter</kbd></li>
+                                            <li>O console retornará algo como: <code class="bg-gray-200 px-2 py-1 rounded text-xs">ID do grupo atual: -3747927678</code></li>
+                                        </ol>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-red-50 border-l-4 border-red-400 p-4 mb-4 rounded-r-lg">
+                                <div class="flex items-start gap-3">
+                                    <i class="fas fa-info-circle text-red-500 mt-1"></i>
+                                    <div>
+                                        <h5 class="font-semibold text-red-800">⚠️ Importante - Formatação do ID:</h5>
+                                        <p class="text-sm text-red-700 mt-1">
+                                            O ID retornado precisa ser formatado! Adicione <strong>100</strong> após o sinal de menos.
+                                        </p>
+                                        <div class="mt-2 bg-white rounded-lg p-3 text-sm">
+                                            <p class="text-gray-600">Exemplo:</p>
+                                            <p class="font-mono">ID retornado: <span class="text-red-600">-3747927678</span></p>
+                                            <p class="font-mono">ID formatado: <span class="text-green-600">-1003747927678</span></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="relative">
+                                <pre id="scriptGroupId" class="bg-gray-900 text-green-400 p-4 rounded-lg text-sm overflow-x-auto font-mono"><code>// Pega o container do chat atualmente aberto
+const chat = document.querySelector('.chat, .conversation, .Chat');
+
+let peerId = null;
+
+// 1️⃣ Tenta pegar pelo header do chat aberto
+const headerPeer = chat?.querySelector('[data-peer-id]');
+
+if (headerPeer) {
+  peerId = headerPeer.getAttribute('data-peer-id');
+}
+
+// 2️⃣ Fallback: pega pelo atributo href do chat ativo
+if (!peerId) {
+  const activeChat = document.querySelector('.chatlist-chat.is-selected, .chatlist-chat.active');
+  peerId = activeChat?.getAttribute('data-peer-id') ||
+           activeChat?.getAttribute('href')?.replace('#', '');
+}
+
+console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detectar o grupo atual');</code></pre>
+                                <button onclick="copyScript('scriptGroupId')" class="absolute top-2 right-2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-sm transition-colors">
+                                    <i class="fas fa-copy mr-1"></i>Copiar
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Divider -->
+                        <div class="border-t border-gray-200 my-8"></div>
+
+                        <!-- Tutorial para pegar Cookies da Amazon -->
+                        <div class="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl p-6 border border-yellow-100 mb-6">
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center">
+                                    <i class="fab fa-amazon text-white text-lg"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-gray-800">Pegar Cookies da Amazon</h4>
+                                    <p class="text-sm text-gray-500">Tutorial para obter os cookies necessários para gerar links curtos (amzn.to)</p>
+                                </div>
+                            </div>
+
+                            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4 rounded-r-lg">
+                                <div class="flex items-start gap-3">
+                                    <i class="fas fa-list-ol text-yellow-500 mt-1"></i>
+                                    <div>
+                                        <h5 class="font-semibold text-yellow-800">Passo a passo:</h5>
+                                        <ol class="text-sm text-yellow-700 mt-2 space-y-2 list-decimal list-inside">
+                                            <li>Acesse <a href="https://associados.amazon.com.br" target="_blank" class="underline font-semibold">associados.amazon.com.br</a> e faça login</li>
+                                            <li>Vá para qualquer página de <strong>produto na Amazon</strong></li>
+                                            <li>Pressione <kbd class="bg-gray-200 px-2 py-1 rounded text-xs">F12</kbd> para abrir o DevTools</li>
+                                            <li>Vá na aba <strong class="text-yellow-900">Network</strong> (Rede)</li>
+                                            <li>Na barra do SiteStripe (topo da página), clique em <strong>"Obter Link"</strong> → <strong>"Link Curto"</strong></li>
+                                            <li>No DevTools, procure a requisição <code class="bg-white px-2 py-1 rounded font-mono text-xs">getShortUrl</code></li>
+                                            <li>Clique na requisição e vá na seção <strong>Headers</strong></li>
+                                            <li>Procure por <strong>"Cookie:"</strong> em "Request Headers"</li>
+                                            <li>Copie todo o valor do Cookie (texto longo)</li>
+                                            <li>Cole no campo <strong>"Cookies do SiteStripe"</strong> nas configurações</li>
+                                        </ol>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-orange-50 border-l-4 border-orange-400 p-4 mb-4 rounded-r-lg">
+                                <div class="flex items-start gap-3">
+                                    <i class="fas fa-info-circle text-orange-500 mt-1"></i>
+                                    <div>
+                                        <h5 class="font-semibold text-orange-800">⚠️ Importante:</h5>
+                                        <p class="text-sm text-orange-700 mt-1">
+                                            Os cookies da Amazon expiram periodicamente (1-2 semanas). Quando os links pararem de encurtar, repita o processo.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Imagem ilustrativa -->
+                            <div class="bg-white rounded-lg p-4 border border-gray-200">
+                                <p class="text-sm text-gray-600 mb-3"><i class="fas fa-image mr-2"></i>Exemplo de onde encontrar o Cookie:</p>
+                                <div class="bg-gray-900 text-green-400 p-4 rounded-lg text-sm font-mono overflow-x-auto">
+                                    <p class="text-gray-500">// Na aba Network → Requisição getShortUrl → Headers</p>
+                                    <p class="text-gray-400 mt-2">Request Headers:</p>
+                                    <p class="text-yellow-400">  Cookie: <span class="text-green-400">session-id=xxx; ubid-acbbr=xxx; at-acbbr=xxx; ...</span></p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tutorial para pegar Cookies do Mercado Livre -->
+                        <div class="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-xl p-6 border border-yellow-200">
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-10 h-10 bg-yellow-400 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-handshake text-white text-lg"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-gray-800">Pegar Cookies do Mercado Livre</h4>
+                                    <p class="text-sm text-gray-500">Tutorial para obter os cookies necessários para gerar links curtos (mercadolivre.com/sec/xxx)</p>
+                                </div>
+                            </div>
+
+                            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4 rounded-r-lg">
+                                <div class="flex items-start gap-3">
+                                    <i class="fas fa-list-ol text-yellow-500 mt-1"></i>
+                                    <div>
+                                        <h5 class="font-semibold text-yellow-800">Passo a passo:</h5>
+                                        <ol class="text-sm text-yellow-700 mt-2 space-y-2 list-decimal list-inside">
+                                            <li>Acesse <a href="https://www.mercadolivre.com.br" target="_blank" class="underline font-semibold">mercadolivre.com.br</a> e faça login na sua conta de afiliado</li>
+                                            <li>Vá para qualquer página de <strong>produto no Mercado Livre</strong></li>
+                                            <li>Pressione <kbd class="bg-gray-200 px-2 py-1 rounded text-xs">F12</kbd> para abrir o DevTools</li>
+                                            <li>Vá na aba <strong class="text-yellow-900">Network</strong> (Rede)</li>
+                                            <li>Na página do produto, clique no botão <strong>"Compartilhar"</strong></li>
+                                            <li>No DevTools, procure a requisição <code class="bg-white px-2 py-1 rounded font-mono text-xs">links</code></li>
+                                            <li>Clique na requisição e vá na seção <strong>Headers</strong></li>
+                                            <li>Procure por <strong>"Cookie:"</strong> em "Request Headers"</li>
+                                            <li>Copie todo o valor do Cookie (texto longo)</li>
+                                            <li>Cole no campo <strong>"Cookies"</strong> do Mercado Livre nas configurações</li>
+                                        </ol>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-amber-50 border-l-4 border-amber-400 p-4 mb-4 rounded-r-lg">
+                                <div class="flex items-start gap-3">
+                                    <i class="fas fa-info-circle text-amber-500 mt-1"></i>
+                                    <div>
+                                        <h5 class="font-semibold text-amber-800">⚠️ Importante:</h5>
+                                        <p class="text-sm text-amber-700 mt-1">
+                                            O token CSRF (<code class="bg-white px-1 rounded">_csrf</code>) está incluído nos cookies e é extraído automaticamente. Se os links pararem de funcionar, repita o processo.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Imagem ilustrativa -->
+                            <div class="bg-white rounded-lg p-4 border border-gray-200">
+                                <p class="text-sm text-gray-600 mb-3"><i class="fas fa-image mr-2"></i>Exemplo de onde encontrar o Cookie:</p>
+                                <div class="bg-gray-900 text-green-400 p-4 rounded-lg text-sm font-mono overflow-x-auto">
+                                    <p class="text-gray-500">// Na aba Network → Requisição links → Headers</p>
+                                    <p class="text-gray-400 mt-2">Request Headers:</p>
+                                    <p class="text-yellow-400">  Cookie: <span class="text-green-400">_d2id=xxx; _csrf=xxx; ssid=xxx; x-meli-session-id=xxx; ...</span></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        // Toast Notification System
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast px-6 py-4 rounded-lg shadow-lg text-white ${type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500'}`;
+            toast.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'} text-xl"></i>
+                    <span class="font-medium">${message}</span>
+                </div>
+            `;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.add('hiding');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Tab Navigation
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
+            document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+            
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('bg-blue-700');
+            });
+            event.target.closest('.nav-item').classList.add('bg-blue-700');
+            
+            const titles = {
+                'dashboard': 'Dashboard',
+                'postagem': 'Postagem',
+                'configuracoes': 'Configurações',
+                'logs': 'Logs',
+                'scripts': 'Scripts'
+            };
+            document.getElementById('pageTitle').textContent = titles[tabName];
+        }
+
+        // Copy Script to Clipboard
+        function copyScript(elementId) {
+            const scriptElement = document.getElementById(elementId);
+            const scriptText = scriptElement.textContent;
+            
+            navigator.clipboard.writeText(scriptText).then(() => {
+                showToast('Script copiado para a área de transferência!', 'success');
+            }).catch(err => {
+                console.error('Erro ao copiar:', err);
+                showToast('Erro ao copiar o script', 'error');
+            });
+        }
+
+        // ============================================
+        // User Monitor Functions (MTProto)
+        // ============================================
+        
+        async function checkUserMonitorStatus() {
+            try {
+                const response = await fetch('/api/user-monitor/status');
+                const status = await response.json();
+                
+                const dot = document.getElementById('userMonitorStatusDot');
+                const text = document.getElementById('userMonitorStatusText');
+                const loginForm = document.getElementById('userMonitorLoginForm');
+                const connectedPanel = document.getElementById('userMonitorConnectedPanel');
+                const btnStart = document.getElementById('btnStartMonitoring');
+                const btnStop = document.getElementById('btnStopMonitoring');
+                
+                if (status.connected) {
+                    dot.className = 'w-3 h-3 rounded-full bg-green-500';
+                    text.textContent = status.monitoring ? 'Conectado e Monitorando' : 'Conectado';
+                    loginForm.classList.add('hidden');
+                    connectedPanel.classList.remove('hidden');
+                    
+                    if (status.monitoring) {
+                        btnStart.classList.add('hidden');
+                        btnStop.classList.remove('hidden');
+                    } else {
+                        btnStart.classList.remove('hidden');
+                        btnStop.classList.add('hidden');
+                    }
+                } else if (status.hasSession) {
+                    dot.className = 'w-3 h-3 rounded-full bg-yellow-500';
+                    text.textContent = 'Sessão salva - Reconectando...';
+                    loginForm.classList.add('hidden');
+                    connectedPanel.classList.add('hidden');
+                    
+                    // Try to reconnect
+                    await reconnectUserMonitor();
+                } else {
+                    dot.className = 'w-3 h-3 rounded-full bg-gray-400';
+                    text.textContent = 'Desconectado';
+                    loginForm.classList.remove('hidden');
+                    connectedPanel.classList.add('hidden');
+                }
+            } catch (err) {
+                console.error('Error checking user monitor status:', err);
+                document.getElementById('userMonitorStatusText').textContent = 'Erro ao verificar status';
+            }
+        }
+        
+        async function reconnectUserMonitor() {
+            try {
+                const response = await fetch('/api/user-monitor/connect', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast(result.message, 'success');
+                    if (result.user) {
+                        document.getElementById('userMonitorUserInfo').textContent = 
+                            `${result.user.firstName} (@${result.user.username || result.user.phone})`;
+                    }
+                }
+                
+                await checkUserMonitorStatus();
+            } catch (err) {
+                console.error('Error reconnecting:', err);
+            }
+        }
+        
+        async function startUserMonitorLogin() {
+            const phone = document.getElementById('userMonitorPhone').value.trim();
+            if (!phone) {
+                showToast('Digite o número de telefone', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/user-monitor/login/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phoneNumber: phone })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast(result.message, 'success');
+                    document.getElementById('userMonitorCodeSection').classList.remove('hidden');
+                } else {
+                    showToast(result.error || 'Erro ao enviar código', 'error');
+                }
+            } catch (err) {
+                showToast('Erro: ' + err.message, 'error');
+            }
+        }
+        
+        async function verifyUserMonitorCode() {
+            const code = document.getElementById('userMonitorCode').value.trim();
+            const password = document.getElementById('userMonitor2FA')?.value?.trim();
+            
+            if (!code) {
+                showToast('Digite o código de verificação', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/user-monitor/login/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code, password })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast(result.message, 'success');
+                    await checkUserMonitorStatus();
+                } else if (result.requires2FA) {
+                    showToast(result.message, 'info');
+                    document.getElementById('userMonitor2FASection').classList.remove('hidden');
+                } else {
+                    showToast(result.error || 'Erro na verificação', 'error');
+                }
+            } catch (err) {
+                showToast('Erro: ' + err.message, 'error');
+            }
+        }
+        
+        async function startUserMonitoring() {
+            try {
+                const response = await fetch('/api/user-monitor/start', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast(result.message, 'success');
+                    await checkUserMonitorStatus();
+                } else {
+                    showToast(result.error || 'Erro ao iniciar', 'error');
+                }
+            } catch (err) {
+                showToast('Erro: ' + err.message, 'error');
+            }
+        }
+        
+        async function stopUserMonitoring() {
+            try {
+                const response = await fetch('/api/user-monitor/stop', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast(result.message, 'success');
+                    await checkUserMonitorStatus();
+                } else {
+                    showToast(result.error || 'Erro ao pausar', 'error');
+                }
+            } catch (err) {
+                showToast('Erro: ' + err.message, 'error');
+            }
+        }
+        
+        async function logoutUserMonitor() {
+            if (!confirm('Tem certeza que deseja desconectar a conta?')) return;
+            
+            try {
+                const response = await fetch('/api/user-monitor/logout', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast(result.message, 'success');
+                    await checkUserMonitorStatus();
+                } else {
+                    showToast(result.error || 'Erro ao desconectar', 'error');
+                }
+            } catch (err) {
+                showToast('Erro: ' + err.message, 'error');
+            }
+        }
+
+        // API Status Check
+        async function checkAPIStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                ['shopee', 'ml', 'ali', 'amazon', 'ai'].forEach(api => {
+                    const dot = document.getElementById(`status-${api}`);
+                    const latencySpan = document.getElementById(`latency-${api}`);
+                    
+                    if (data[api] && data[api].online) {
+                        dot.classList.add('online');
+                        dot.classList.remove('offline');
+                        
+                        // Show latency if available
+                        if (data[api].latency) {
+                            latencySpan.textContent = `(${data[api].latency}ms)`;
+                        }
+                    } else {
+                        dot.classList.add('offline');
+                        dot.classList.remove('online');
+                        
+                        // Show error message if available
+                        if (data[api] && data[api].error) {
+                            latencySpan.textContent = `(${data[api].error})`;
+                        }
+                    }
+                });
+            } catch (err) {
+                console.error('Failed to check API status:', err);
+            }
+        }
+
+        // Load Metrics
+        async function loadMetrics() {
+            try {
+                const response = await fetch('/api/metrics');
+                const data = await response.json();
+                
+                document.getElementById('metric-today').textContent = data.offersToday || 0;
+                document.getElementById('metric-channels').textContent = data.activeChannels || 0;
+                document.getElementById('metric-errors').textContent = data.errors || 0;
+            } catch (err) {
+                console.error('Failed to load metrics:', err);
+            }
+        }
+
+        // Load Recent Activity
+        async function loadRecentActivity() {
+            try {
+                const response = await fetch('/api/recent-activity');
+                const activities = await response.json();
+                
+                const html = activities.map(act => `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-2 h-2 rounded-full ${act.success ? 'bg-green-500' : 'bg-red-500'}"></div>
+                            <div>
+                                <p class="font-medium text-gray-800 text-sm">${act.product_name || 'Produto'}</p>
+                                <p class="text-xs text-gray-500">${act.category || 'Sem categoria'} ${act.coupon ? '• Cupom: ' + act.coupon : ''}</p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-sm font-semibold text-gray-800">${act.price || 'N/A'}</p>
+                            <p class="text-xs text-gray-400">${new Date(act.posted_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                        </div>
+                    </div>
+                `).join('');
+                
+                document.getElementById('recentActivity').innerHTML = html || '<p class="text-gray-500 text-sm">Nenhuma atividade recente</p>';
+            } catch (err) {
+                console.error('Failed to load recent activity:', err);
+                document.getElementById('recentActivity').innerHTML = '<p class="text-gray-500 text-sm">Erro ao carregar atividades</p>';
+            }
+        }
+
+        // Load Charts
+        let weeklyChart = null;
+        let categoryChart = null;
+        
+        async function loadCharts() {
+            try {
+                const response = await fetch('/api/charts');
+                const data = await response.json();
+                
+                // Destroy existing charts
+                if (weeklyChart) weeklyChart.destroy();
+                if (categoryChart) categoryChart.destroy();
+                
+                // Weekly Posts Chart
+                const weeklyCtx = document.getElementById('weeklyChart').getContext('2d');
+                weeklyChart = new Chart(weeklyCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.weekly.labels,
+                        datasets: [{
+                            label: 'Postagens',
+                            data: data.weekly.values,
+                            backgroundColor: '#1e3a8a',
+                            borderRadius: 8
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } }
+                    }
+                });
+                
+                // Category Chart
+                const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+                categoryChart = new Chart(categoryCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: data.categories.labels,
+                        datasets: [{
+                            data: data.categories.values,
+                            backgroundColor: ['#1e3a8a', '#3b82f6', '#60a5fa', '#93c5fd', '#dbeafe']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false
+                    }
+                });
+            } catch (err) {
+                console.error('Failed to load charts:', err);
+            }
+        }
+
+        // Load Categories
+        async function loadCategories() {
+            try {
+                const response = await fetch('/categories');
+                const categories = await response.json();
+                
+                const html = categories.map(cat => `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                        <div>
+                            <p class="font-medium text-gray-800">${cat.name_ia}</p>
+                            <p class="text-sm text-gray-500">Thread ID: ${cat.thread_id}</p>
+                        </div>
+                        <button onclick="deleteCategory(${cat.id})" class="text-red-500 hover:text-red-700 transition-colors">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `).join('');
+                
+                document.getElementById('categoriesList').innerHTML = html || '<p class="text-gray-500 text-sm">Nenhuma categoria cadastrada</p>';
+            } catch (err) {
+                console.error('Failed to load categories:', err);
+            }
+        }
+
+        // Add Category
+        async function addCategory(event) {
+            event.preventDefault();
+            const name = document.getElementById('categoryName').value;
+            const threadId = document.getElementById('categoryThreadId').value;
+            
+            try {
+                const response = await fetch('/categories', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name_ia: name, thread_id: threadId })
+                });
+                
+                if (response.ok) {
+                    showToast('Categoria adicionada com sucesso!', 'success');
+                    document.getElementById('categoryName').value = '';
+                    document.getElementById('categoryThreadId').value = '';
+                    loadCategories();
+                } else {
+                    showToast('Erro ao adicionar categoria', 'error');
+                }
+            } catch (err) {
+                showToast('Erro ao adicionar categoria', 'error');
+            }
+        }
+
+        // Delete Category
+        async function deleteCategory(id) {
+            if (!confirm('Tem certeza que deseja excluir esta categoria?')) return;
+            
+            try {
+                const response = await fetch(`/categories/${id}`, { method: 'DELETE' });
+                if (response.ok) {
+                    showToast('Categoria excluída com sucesso!', 'success');
+                    loadCategories();
+                } else {
+                    showToast('Erro ao excluir categoria', 'error');
+                }
+            } catch (err) {
+                showToast('Erro ao excluir categoria', 'error');
+            }
+        }
+
+        // Load Monitoring
+        async function loadMonitoring() {
+            try {
+                const response = await fetch('/monitoring');
+                const channels = await response.json();
+                
+                const html = channels.map(ch => `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                        <div>
+                            <p class="font-medium text-gray-800">${ch.name || 'Canal'}</p>
+                            <p class="text-sm text-gray-500">${ch.chat_id}</p>
+                        </div>
+                        <button onclick="deleteMonitoring(${ch.id})" class="text-red-500 hover:text-red-700 transition-colors">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `).join('');
+                
+                document.getElementById('monitoringList').innerHTML = html || '<p class="text-gray-500 text-sm">Nenhum canal monitorado</p>';
+            } catch (err) {
+                console.error('Failed to load monitoring:', err);
+            }
+        }
+
+        // Add Monitoring
+        async function addMonitoring(event) {
+            event.preventDefault();
+            const chatId = document.getElementById('monitorChatId').value;
+            const name = document.getElementById('monitorName').value;
+            
+            try {
+                const response = await fetch('/monitoring', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chat_id: chatId, name: name })
+                });
+                
+                if (response.ok) {
+                    showToast('Canal adicionado com sucesso!', 'success');
+                    document.getElementById('monitorChatId').value = '';
+                    document.getElementById('monitorName').value = '';
+                    loadMonitoring();
+                } else {
+                    showToast('Erro ao adicionar canal', 'error');
+                }
+            } catch (err) {
+                showToast('Erro ao adicionar canal', 'error');
+            }
+        }
+
+        // Delete Monitoring
+        async function deleteMonitoring(id) {
+            if (!confirm('Tem certeza que deseja remover este canal?')) return;
+            
+            try {
+                const response = await fetch(`/monitoring/${id}`, { method: 'DELETE' });
+                if (response.ok) {
+                    showToast('Canal removido com sucesso!', 'success');
+                    loadMonitoring();
+                } else {
+                    showToast('Erro ao remover canal', 'error');
+                }
+            } catch (err) {
+                showToast('Erro ao remover canal', 'error');
+            }
+        }
+
+        // Update button text based on schedule time
+        function updateButtonText() {
+            const scheduleTime = document.getElementById('scheduleTime').value;
+            const postButton = document.getElementById('postButton');
+            
+            if (scheduleTime) {
+                postButton.innerHTML = '<i class="fas fa-clock mr-2"></i>Agendar Agora';
+                postButton.className = 'flex-1 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-colors';
+            } else {
+                postButton.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Postar Agora';
+                postButton.className = 'flex-1 px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition-colors';
+            }
+        }
+
+        // Generate Preview
+        async function generatePreview() {
+            const content = document.getElementById('postContent').value;
+            const imageFile = document.getElementById('postImage').files[0];
+            
+            if (!content) {
+                showToast('Digite o conteúdo da oferta primeiro', 'error');
+                return;
+            }
+            
+            try {
+                const formData = new FormData();
+                formData.append('content', content);
+                if (imageFile) {
+                    formData.append('image', imageFile);
+                }
+                
+                const response = await fetch('/api/preview', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                // Create Telegram-style message bubble
+                let previewHTML = `
+                    <div class="bg-gradient-to-b from-[#0088cc] to-[#006699] p-4">
+                        <!-- Telegram Header -->
+                        <div class="flex items-center mb-3 text-white text-sm">
+                            <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center mr-2">
+                                <i class="fas fa-store"></i>
+                            </div>
+                            <div>
+                                <p class="font-semibold">Ofertas Sertão</p>
+                                <p class="text-xs text-white/70">Bot</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Message Bubble -->
+                        <div class="bg-white rounded-lg shadow-lg overflow-hidden max-w-sm">
+                            ${data.imagePreview ? `
+                                <div class="relative">
+                                    <img src="${data.imagePreview}" alt="Preview" class="w-full h-auto">
+                                </div>
+                            ` : ''}
+                            <div class="p-3 space-y-2">
+                                <p class="font-semibold text-gray-900 text-base">${data.title || 'Produto'}</p>
+                                ${data.price ? `<p class="text-green-600 font-bold text-lg">💰 ${data.price}</p>` : ''}
+                                ${data.coupon ? `<p class="text-blue-600 text-sm">🎟️ Cupom: ${data.coupon}</p>` : ''}
+                                ${data.links && data.links.length > 0 ? `
+                                    <div class="space-y-1 pt-2 border-t border-gray-200">
+                                        ${data.links.map(link => `<p class="text-xs text-blue-500 truncate">🔗 ${link}</p>`).join('')}
+                                    </div>
+                                ` : ''}
+                                <p class="text-xs text-gray-500 pt-2">📢 Mais ofertas em: https://t.me/ofertasertao</p>
+                            </div>
+                            ${data.isDuplicate ? `
+                                <div class="bg-red-50 border-t border-red-200 p-2">
+                                    <p class="text-red-600 text-xs">⚠️ Esta oferta já foi postada nas últimas 24h</p>
+                                </div>
+                            ` : ''}
+                        </div>
+                        
+                        <!-- Telegram Footer -->
+                        <div class="text-white/50 text-xs mt-2">
+                            <i class="fas fa-check-double"></i> ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('previewArea').innerHTML = previewHTML;
+                showToast('Preview gerado com sucesso!', 'success');
+            } catch (err) {
+                console.error('Preview error:', err);
+                showToast('Erro ao gerar preview', 'error');
+            }
+        }
+
+        // Post Now
+        async function postNow() {
+            const content = document.getElementById('postContent').value;
+            const scheduleTime = document.getElementById('scheduleTime').value;
+            const imageFile = document.getElementById('postImage').files[0];
+            
+            if (!content) {
+                showToast('Digite o conteúdo da oferta primeiro', 'error');
+                return;
+            }
+            
+            // Validate schedule time if provided
+            if (scheduleTime) {
+                const scheduledDate = new Date(scheduleTime);
+                const now = new Date();
+                
+                if (scheduledDate <= now) {
+                    showToast('A data deve ser no futuro', 'error');
+                    return;
+                }
+            }
+            
+            try {
+                const formData = new FormData();
+                formData.append('content', content);
+                if (scheduleTime) formData.append('scheduleTime', scheduleTime);
+                if (imageFile) formData.append('image', imageFile);
+                
+                const response = await fetch('/api/post', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showToast(scheduleTime ? 'Postagem agendada com sucesso!' : 'Postagem enviada com sucesso!', 'success');
+                    document.getElementById('postContent').value = '';
+                    document.getElementById('scheduleTime').value = '';
+                    document.getElementById('postImage').value = '';
+                    updateButtonText();
+                    document.getElementById('previewArea').innerHTML = `
+                        <div class="p-4 text-center text-white/60 text-sm">
+                            <i class="fas fa-eye text-4xl mb-3 block opacity-50"></i>
+                            Clique em "Gerar Preview" para visualizar
+                        </div>
+                    `;
+                    if (scheduleTime) loadScheduledPosts();
+                    loadRecentActivity();
+                    loadMetrics();
+                } else {
+                    showToast(result.error || 'Erro ao enviar postagem', 'error');
+                }
+            } catch (err) {
+                console.error('Post error:', err);
+                showToast('Erro ao enviar postagem', 'error');
+            }
+        }
+
+        // Clear Cache
+        async function clearCache() {
+            if (!confirm('Tem certeza que deseja limpar o cache?')) return;
+            
+            try {
+                const response = await fetch('/api/clear-cache', { method: 'POST' });
+                if (response.ok) {
+                    showToast('Cache limpo com sucesso!', 'success');
+                } else {
+                    showToast('Erro ao limpar cache', 'error');
+                }
+            } catch (err) {
+                showToast('Erro ao limpar cache', 'error');
+            }
+        }
+
+        // Refresh Logs
+        async function refreshLogs() {
+            try {
+                const response = await fetch('/api/logs');
+                const logs = await response.json();
+                
+                const html = logs.map(log => `
+                    <div class="p-4 bg-gray-50 rounded-lg border-l-4 ${log.type === 'error' ? 'border-red-500' : log.type === 'success' ? 'border-green-500' : 'border-blue-500'}">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <p class="font-medium text-gray-800">${log.message}</p>
+                                <p class="text-sm text-gray-500 mt-1">${log.details || ''}</p>
+                            </div>
+                            <span class="text-xs text-gray-400">${new Date(log.timestamp).toLocaleString('pt-BR')}</span>
+                        </div>
+                    </div>
+                `).join('');
+                
+                document.getElementById('logsList').innerHTML = html || '<p class="text-gray-500 text-sm">Nenhum log disponível</p>';
+            } catch (err) {
+                console.error('Failed to load logs:', err);
+            }
+        }
+
+        // Load Scheduled Posts
+        async function loadScheduledPosts() {
+            try {
+                const response = await fetch('/api/scheduled');
+                const posts = await response.json();
+                
+                const html = posts.map(post => `
+                    <div class="p-3 bg-gray-50 rounded-lg">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-800">${post.preview}</p>
+                                <p class="text-xs text-gray-500 mt-1">${new Date(post.schedule_time).toLocaleString('pt-BR')}</p>
+                            </div>
+                            <button onclick="cancelScheduled(${post.id})" class="text-red-500 hover:text-red-700">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+                
+                document.getElementById('scheduledPosts').innerHTML = html || '<p class="text-gray-500 text-sm">Nenhuma postagem agendada</p>';
+            } catch (err) {
+                console.error('Failed to load scheduled posts:', err);
+            }
+        }
+
+        // Cancel Scheduled Post
+        async function cancelScheduled(id) {
+            if (!confirm('Tem certeza que deseja cancelar esta postagem agendada?')) return;
+            
+            try {
+                const response = await fetch(`/api/scheduled/${id}`, { method: 'DELETE' });
+                if (response.ok) {
+                    showToast('Postagem cancelada com sucesso!', 'success');
+                    loadScheduledPosts();
+                } else {
+                    showToast('Erro ao cancelar postagem', 'error');
+                }
+            } catch (err) {
+                console.error('Cancel error:', err);
+                showToast('Erro ao cancelar postagem', 'error');
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadMetrics();
+            loadCharts();
+            loadCategories();
+            loadMonitoring();
+            loadRecentActivity();
+            loadScheduledPosts();
+            checkAPIStatus();
+            refreshLogs();
+            loadForbiddenWords();
+            loadSettings(); // Load SaaS settings
+            checkUserMonitorStatus(); // Check user monitor status
+            
+            // Refresh metrics every 30s
+            setInterval(() => {
+                loadMetrics();
+                loadRecentActivity();
+                checkAPIStatus();
+            }, 30000);
+        });
+
+        // --- Forbidden Words Functions ---
+        async function loadForbiddenWords() {
+            try {
+                const response = await fetch('/api/forbidden-words');
+                const words = await response.json();
+                
+                const html = words.map(wordObj => {
+                    const word = typeof wordObj === 'string' ? wordObj : wordObj.word;
+                    const id = wordObj.id; // May be undefined if just strings
+                    const display = word.toLowerCase();
+                    // If we have ID, we can delete properly. 
+                    // Backend returns getAllWithIds? Let's check. 
+                    // grep said await ForbiddenWords.getAllWithIds();
+                    // But model says getAll() returns strings.
+                    // Let's assume the endpoint returns helper with IDs or stick to strings if simple.
+                    // grep of server.js line 627: const words = await ForbiddenWords.getAllWithIds();
+                    // So it returns objects {id, word}.
+                    
+                    return `
+                    <span class="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm flex items-center gap-2">
+                        ${display}
+                        <button onclick="deleteForbiddenWord(${id})" class="hover:text-red-900 font-bold">&times;</button>
+                    </span>`;
+                }).join('');
+                
+                document.getElementById('forbiddenWordsList').innerHTML = html || '<span class="text-gray-500 italic">Nenhuma palavra proibida.</span>';
+            } catch (err) {
+                console.error('Failed to load forbidden words:', err);
+                document.getElementById('forbiddenWordsList').innerHTML = '<span class="text-red-500">Erro ao carregar.</span>';
+            }
+        }
+
+        async function addForbiddenWord(event) {
+            event.preventDefault();
+            const input = document.getElementById('forbiddenWord');
+            const word = input.value.trim();
+            if(!word) return;
+
+            try {
+                const res = await fetch('/api/forbidden-words', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ word })
+                });
+                if(res.ok) {
+                    showToast('Palavra adicionada!', 'success');
+                    input.value = '';
+                    loadForbiddenWords();
+                } else {
+                    showToast('Erro ao adicionar.', 'error');
+                }
+            } catch(err) {
+                console.error(err);
+                showToast('Erro de conexão.', 'error');
+            }
+        }
+
+        async function deleteForbiddenWord(id) {
+            if(!confirm('Remover esta palavra proibida?')) return;
+            try {
+                const res = await fetch(`/api/forbidden-words/${id}`, { method: 'DELETE' });
+                if(res.ok) {
+                    showToast('Palavra removida!', 'success');
+                    loadForbiddenWords();
+                } else {
+                    showToast('Erro ao remover.', 'error');
+                }
+            } catch(err) {
+                console.error(err);
+                showToast('Erro de conexão.', 'error');
+            }
+        }
+
+        // --- SaaS Settings Functions ---
+
+        async function loadSettings() {
+            try {
+                const res = await fetch('/api/settings');
+                const settings = await res.json();
+                
+                // Generic Generic population based on ID pattern "setting_KEY"
+                // This covers all keys returned by the API
+                for (const [key, value] of Object.entries(settings)) {
+                    const el = document.getElementById('setting_' + key);
+                    if (el) {
+                        // Handle checkboxes differently
+                        if (el.type === 'checkbox') {
+                            el.checked = value === 'true' || value === true || value === '1';
+                        } else {
+                            el.value = value || '';
+                        }
+                    }
+                }
+                
+                // Fallbacks for specific legacy/alias keys if needed
+                if(settings.TELEGRAM_BOT_TOKEN && !settings.TELEGRAM_TOKEN) {
+                     const el = document.getElementById('setting_TELEGRAM_TOKEN');
+                     if(el) el.value = settings.TELEGRAM_BOT_TOKEN;
+                }
+
+                // Apply visual theme immediately
+                applyTheme(settings);
+            } catch (err) {
+                console.error('Error loading settings:', err);
+                showToast('Erro ao carregar configurações', 'error');
+            }
+        }
+
+        async function saveSettings() {
+            const data = {};
+            
+            // Automatically collect all inputs starting with "setting_"
+            const inputs = document.querySelectorAll('[id^="setting_"]');
+            inputs.forEach(input => {
+                const key = input.id.replace('setting_', '');
+                if (key) {
+                    // Handle checkboxes differently
+                    if (input.type === 'checkbox') {
+                        data[key] = input.checked ? 'true' : 'false';
+                    } else {
+                        data[key] = input.value;
+                    }
+                }
+            });
+
+            try {
+                const res = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                if (res.ok) {
+                    showToast('Configurações salvas com sucesso!', 'success');
+                    loadSettings(); // Reload to confirm and apply
+                } else {
+                    showToast('Erro ao salvar configurações.', 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                showToast('Erro de conexão.', 'error');
+            }
+        }
+
+        async function uploadLogo() {
+            const input = document.getElementById('logoInput');
+            if (input.files.length === 0) {
+                showToast('Selecione uma imagem primeiro.', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('logo', input.files[0]);
+
+            try {
+                const res = await fetch('/api/upload/logo', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (res.ok) {
+                    showToast('Logo atualizado com sucesso!', 'success');
+                    // Update the image src specifically to force reload
+                    const timestamp = new Date().getTime();
+                    const mainLogo = document.getElementById('main-logo');
+                    const previewLogo = document.getElementById('preview-logo');
+                    if(mainLogo) mainLogo.src = '/img/logo.png?t=' + timestamp;
+                    if(previewLogo) previewLogo.src = '/img/logo.png?t=' + timestamp;
+                } else {
+                    showToast('Erro ao enviar logo.', 'error');
+                }
+            } catch(err) {
+                console.error(err);
+                showToast('Erro no upload.', 'error');
+            }
+        }
+
+        async function restartBot() {
+            if(!confirm('Isso irá reiniciar o Bot do Telegram com as novas configurações. O serviço ficará indisponível por alguns segundos. Continuar?')) return;
+            
+            try {
+                const res = await fetch('/api/settings/restart-bot', { method: 'POST' });
+                const json = await res.json();
+                if(json.success) {
+                    showToast(json.message, 'success');
+                } else {
+                    showToast('Falha ao reiniciar: ' + json.message, 'error');
+                }
+            } catch(err) {
+                showToast('Erro ao tentar reiniciar o bot.', 'error');
+            }
+        }
+
+        function downloadBackup() {
+            window.location.href = '/api/backup/export';
+        }
+
+        function applyTheme(settings) {
+            // Apply Colors
+            if (settings.THEME_COLOR_PRIMARY) {
+                // Sidebar
+                const sidebar = document.querySelector('.bg-blue-900'); 
+                if(sidebar) sidebar.classList.remove('bg-blue-900');
+                if(sidebar) sidebar.style.backgroundColor = settings.THEME_COLOR_PRIMARY;
+                
+                // Active Nav Items
+                document.querySelectorAll('.bg-blue-700').forEach(el => el.style.backgroundColor = settings.THEME_COLOR_SECONDARY || settings.THEME_COLOR_PRIMARY);
+
+                // Primary Buttons
+                document.querySelectorAll('.bg-green-600').forEach(btn => btn.style.backgroundColor = settings.THEME_COLOR_PRIMARY);
+            }
+
+            // Apply Font
+            if (settings.THEME_FONT_URL) {
+                // Check if link exists
+                let link = document.getElementById('theme-font-link');
+                if (!link) {
+                    link = document.createElement('link');
+                    link.id = 'theme-font-link';
+                    link.rel = 'stylesheet';
+                    document.head.appendChild(link);
+                }
+                link.href = settings.THEME_FONT_URL;
+
+                // Extract Font Family from URL if possible, or assume user knows CSS?
+                // Actually, usually you need to specify the family.
+                // But simplified: We might need a separate field for 'Font Family Name'.
+                // If the user pastes a Google Fonts URL, we can't easily guess the family name without parsing.
+                // Let's assume the user pastes the URL, and we might need an input for the name.
+                // Or, more advanced: fetch the CSS and parse it.
+                // For now, let's just add the stylesheet. The user might need to inspect element to see it working? 
+                // No, that's bad UX.
+                // I'll add "font-family: 'Roboto', sans-serif;" to body if I knew the name.
+                // Let's rely on a smart guess or just ask the user for the name.
+                // For this iteration, I'll just load the font. The user said "Adjust font also (putting the font link)".
+                // Maybe they just want the link injected.
+                // I'll try to apply it to body if I can find the family name in the URL...
+                // URL example: ...?family=Roboto:wght@400...
+                
+                try {
+                    const url = new URL(settings.THEME_FONT_URL);
+                    const familyParam = url.searchParams.get('family');
+                    if (familyParam) {
+                        // "Roboto:wght@400;700" -> "Roboto"
+                        const familyName = familyParam.split(':')[0];
+                        document.body.style.fontFamily = `'${familyName.replace(/\+/g, ' ')}', sans-serif`;
+                    }
+                } catch (e) {
+                    console.error('Could not parse font family from URL');
+                }
+            }
+        }
+    </script>
+</body>
+</html>
