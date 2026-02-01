@@ -75,11 +75,24 @@ function fallbackClassification(title = '', description = '') {
     
     const isCouponMessage = couponIndicators.some(indicator => text.includes(indicator));
     
-    // Extract title from first line (remove emojis and common prefixes)
-    let extractedTitle = description.split('\n')[0]
-        .replace(/[🛒🔥💥🚨🎯]/g, '')
-        .replace(/^\s*(br\s*)?/i, '')
-        .trim();
+    // Extract title - try multiple approaches
+    const lines = description.split('\n').map(l => l.trim()).filter(l => l && !l.includes('http'));
+    let extractedTitle = '';
+    
+    // First try to find a product name line (longer text without just emojis)
+    for (const line of lines) {
+        // Skip lines that are just emojis, very short, or prices
+        const cleanLine = line.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim();
+        if (cleanLine.length > 10 && !cleanLine.match(/^[\d,.]+\s*(à vista|reais)?$/i)) {
+            extractedTitle = cleanLine;
+            break;
+        }
+    }
+    
+    // Fallback to first non-empty line
+    if (!extractedTitle && lines.length > 0) {
+        extractedTitle = lines[0].replace(/[🛒🔥💥🚨🎯👍👎]/g, '').trim();
+    }
     
     // For coupon messages, use a better title
     if (isCouponMessage) {
@@ -92,12 +105,25 @@ function fallbackClassification(title = '', description = '') {
         }
     }
     
-    // Extract price from text (look for R$ patterns) - NOT for coupon messages
+    // Extract price from text (look for various patterns) - NOT for coupon messages
     let extractedPrice = '';
     if (!isCouponMessage) {
-        const priceMatch = description.match(/💰\s*(R\$\s*[\d.,]+)/i);
+        // Try 💰 R$ format first
+        let priceMatch = description.match(/💰\s*(R\$\s*[\d.,]+)/i);
         if (priceMatch) {
             extractedPrice = priceMatch[1];
+        } else {
+            // Try "R$ XX,XX" or "XX,XX à vista" patterns
+            priceMatch = description.match(/R\$\s*([\d.,]+)/i);
+            if (priceMatch) {
+                extractedPrice = `R$ ${priceMatch[1]}`;
+            } else {
+                // Try "XX,XX à vista" pattern (without R$)
+                priceMatch = description.match(/([\d]+[.,][\d]{2})\s*à vista/i);
+                if (priceMatch) {
+                    extractedPrice = `R$ ${priceMatch[1]}`;
+                }
+            }
         }
     }
     

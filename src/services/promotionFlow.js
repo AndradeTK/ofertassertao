@@ -14,6 +14,45 @@ const logger = createComponentLogger('PromotionFlow');
 let bot = null;
 let Config = null;
 
+/**
+ * Sanitize text to ensure valid UTF-8 encoding
+ * Removes invalid characters that cause Telegram API errors
+ * Preserves valid emojis and Unicode characters
+ */
+function sanitizeUtf8(text) {
+    if (!text) return '';
+    
+    // Convert to string if not already
+    let str = String(text);
+    
+    // Remove null bytes and other control characters (except newlines, tabs, carriage returns)
+    str = str.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+    
+    // Remove only truly invalid/unpaired surrogates
+    // This regex finds lone high surrogates not followed by low surrogates
+    // and lone low surrogates not preceded by high surrogates
+    try {
+        // Use a safer approach - encode to buffer and back
+        str = Buffer.from(str, 'utf8').toString('utf8');
+    } catch (e) {
+        // If encoding fails, try character by character
+        str = str.split('').filter(char => {
+            const code = char.charCodeAt(0);
+            // Keep valid characters including emojis
+            return code < 0xD800 || code > 0xDFFF || (code >= 0xD800 && code <= 0xDBFF);
+        }).join('');
+    }
+    
+    // Normalize to NFC form (composed characters)
+    try {
+        str = str.normalize('NFC');
+    } catch (e) {
+        // If normalization fails, return as-is
+    }
+    
+    return str;
+}
+
 // Initialize with bot instance (called from server.js)
 function initializePromotionFlow(botInstance, ConfigModel) {
     bot = botInstance;
@@ -130,9 +169,10 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
         console.log(`[6/8] ✅ Thread ID for category "${ai.category}": ${threadId}`);
 
         // Use AI extracted data with meta fallback if empty
-        const productName = ai.title || meta.title || 'Produto';
-        const price = ai.price || meta.price || '';
-        const cupomInfo = ai.coupon || '';
+        // Sanitize all text fields to ensure valid UTF-8
+        const productName = sanitizeUtf8(ai.title || meta.title || 'Produto');
+        const price = sanitizeUtf8(ai.price || meta.price || '');
+        const cupomInfo = sanitizeUtf8(ai.coupon || '');
 
         logger.info('[7/8] Preparing message...');
         console.log(`[7/8] Dados finais para mensagem:`);
@@ -160,7 +200,8 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
             messageText = `🎟️ ${productName}\n\n`;
             
             // Use the original description but replace URLs with affiliate versions
-            let originalContent = ai.originalDescription;
+            // Also sanitize the original content
+            let originalContent = sanitizeUtf8(ai.originalDescription);
             for (const [originalUrl, affiliateUrl] of Object.entries(affiliateUrls)) {
                 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 originalContent = originalContent.replace(
@@ -217,10 +258,10 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
             messageText += `\n📢 Mais ofertas em: ${groupLink}`;
         }
 
-        const caption = messageText;
+        // Sanitize the caption to ensure valid UTF-8
+        const caption = sanitizeUtf8(messageText);
         logger.info(`Caption generated: ${caption.length} chars`);
-        console.log(`[7/8] Caption gerada (${caption.length} chars):`);
-        console.log(caption);
+        console.log(`[7/8] ✅ Mensagem construída, tamanho: ${caption.length} caracteres`);
 
         // Get group chat ID and build reply markup
         const groupChatId = await Config.getGroupChatId() || process.env.GROUP_CHAT_ID;

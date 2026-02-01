@@ -249,6 +249,13 @@ async function getAmazonLink(sourceUrl) {
             return sourceUrl;
         }
 
+        // Check if URL is already a short link (amzn.to) - these already have affiliate tag
+        const urlLower = sourceUrl.toLowerCase();
+        if (urlLower.includes('amzn.to/')) {
+            console.log('[Amazon] URL já é um link curto (amzn.to), retornando original');
+            return sourceUrl;
+        }
+
         // Parse the Amazon URL
         const url = new URL(sourceUrl);
         
