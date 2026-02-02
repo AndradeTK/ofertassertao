@@ -14,7 +14,7 @@ const path = require('path');
 const { createComponentLogger } = require('../config/logger');
 const Monitoring = require('../models/monitoringModel');
 const Config = require('../models/configModel');
-const { handlePromotionFlow } = require('./promotionFlow');
+const { handlePromotionFlow, broadcastToClients } = require('./promotionFlow');
 const os = require('os');
 
 const logger = createComponentLogger('UserMonitor');
@@ -478,10 +478,47 @@ function enqueuePromotion(text, photoSource, source = 'unknown') {
     promotionQueue.push({ text, photoSource, source, addedAt: Date.now() });
     console.log(`[Queue] ➕ Promoção adicionada à fila (${promotionQueue.length} na fila) - Fonte: ${source}`);
     
+    // Broadcast queue update
+    broadcastQueueStatus();
+    
     // Start processing if not already running
     if (!isProcessingQueue) {
         processPromotionQueue();
     }
+}
+
+/**
+ * Broadcast queue status to all clients
+ */
+function broadcastQueueStatus() {
+    const status = getQueueStatusInternal();
+    broadcastToClients('queue_status_update', status);
+}
+
+/**
+ * Get queue status (internal version without module.exports)
+ */
+function getQueueStatusInternal() {
+    const now = Date.now();
+    const queueLength = promotionQueue.length;
+    const isProcessing = isProcessingQueue;
+    const estimatedTimeSeconds = queueLength * (PROMOTION_DELAY / 1000);
+    
+    let avgWaitTime = 0;
+    if (queueLength > 0) {
+        const totalWaitTime = promotionQueue.reduce((sum, item) => {
+            return sum + (now - item.addedAt);
+        }, 0);
+        avgWaitTime = Math.floor((totalWaitTime / queueLength) / 1000);
+    }
+    
+    return {
+        queueLength,
+        isProcessing,
+        estimatedTimeSeconds,
+        avgWaitTimeSeconds: avgWaitTime,
+        promotionDelay: PROMOTION_DELAY / 1000
+    };
 }
 
 /**
@@ -492,12 +529,14 @@ async function processPromotionQueue() {
     
     isProcessingQueue = true;
     console.log(`[Queue] 🚀 Iniciando processamento da fila (${promotionQueue.length} itens)`);
+    broadcastQueueStatus();
     
     while (promotionQueue.length > 0) {
         const item = promotionQueue.shift();
         const waitTime = Math.floor((Date.now() - item.addedAt) / 1000);
         
         console.log(`[Queue] 📤 Processando promoção (aguardou ${waitTime}s na fila, restam ${promotionQueue.length})`);
+        broadcastQueueStatus();
         
         try {
             const result = await handlePromotionFlow(item.text, null, item.photoSource);
@@ -514,6 +553,7 @@ async function processPromotionQueue() {
                 // Put item back at the beginning of the queue
                 promotionQueue.unshift(item);
                 console.log(`[Queue] ⏱️ Rate limit atingido! Aguardando 65s antes de retentar... (${promotionQueue.length} na fila)`);
+                broadcastQueueStatus();
                 
                 // Wait 65 seconds before retrying (rate limit window is 60s)
                 await new Promise(resolve => setTimeout(resolve, 65000));
@@ -539,6 +579,7 @@ async function processPromotionQueue() {
     
     isProcessingQueue = false;
     console.log(`[Queue] ✅ Fila vazia, processamento finalizado`);
+    broadcastQueueStatus();
 }
 
 /**
@@ -1132,6 +1173,13 @@ async function getDialogs() {
     }
 }
 
+/**
+ * Get queue status for dashboard display
+ */
+function getQueueStatus() {
+    return getQueueStatusInternal();
+}
+
 module.exports = {
     getStatus,
     initClient,
@@ -1143,5 +1191,6 @@ module.exports = {
     startMonitoring,
     stopMonitoring,
     refreshMonitoredGroups,
-    getDialogs
+    getDialogs,
+    getQueueStatus
 };

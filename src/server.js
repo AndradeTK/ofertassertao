@@ -48,6 +48,26 @@ async function initializeApp() {
             if (value) process.env[key] = value;
         }
         logger.info('Global settings loaded from database');
+        
+        // Load rate limit settings from database
+        try {
+            const { pool } = require('./config/db');
+            const [maxRows] = await pool.execute('SELECT value_text FROM config WHERE key_name = ? LIMIT 1', ['RATE_LIMIT_MAX_MESSAGES']);
+            const [timeRows] = await pool.execute('SELECT value_text FROM config WHERE key_name = ? LIMIT 1', ['RATE_LIMIT_TIME_WINDOW']);
+            
+            const maxMessages = maxRows.length > 0 ? parseInt(maxRows[0].value_text) : 5;
+            const timeWindow = timeRows.length > 0 ? parseInt(timeRows[0].value_text) : 60;
+            
+            globalRateLimiter.updateSettings(maxMessages, timeWindow);
+            logger.info(`Rate limit loaded: ${maxMessages} messages per ${timeWindow}s`);
+            
+            // Set up callback for rate limit status updates
+            globalRateLimiter.setStatusChangeCallback((status) => {
+                broadcastToClients('rate_limit_update', status);
+            });
+        } catch (rlErr) {
+            logger.warn(`Could not load rate limit settings: ${rlErr.message}`);
+        }
     } catch (err) {
         logger.error(`Failed to load settings: ${err.message}`);
     }
@@ -946,6 +966,72 @@ app.delete('/api/excluded-urls/:id', async (req, res) => {
 });
 
 // ========================= END EXCLUDED URLS API =========================
+
+// ========================= RATE LIMIT & QUEUE API =========================
+
+// Get rate limit settings
+app.get('/api/rate-limit/settings', (req, res) => {
+    const settings = globalRateLimiter.getSettings();
+    res.json({ success: true, data: settings });
+});
+
+// Update rate limit settings
+app.post('/api/rate-limit/settings', async (req, res) => {
+    try {
+        const { maxMessages, timeWindowSeconds } = req.body;
+        
+        if (!maxMessages || !timeWindowSeconds) {
+            return res.status(400).json({ error: 'maxMessages e timeWindowSeconds são obrigatórios' });
+        }
+        
+        // Update the rate limiter
+        globalRateLimiter.updateSettings(maxMessages, timeWindowSeconds);
+        
+        // Save to database for persistence
+        const { pool } = require('./config/db');
+        
+        // Save maxMessages
+        const [existingMax] = await pool.execute('SELECT id FROM config WHERE key_name = ? LIMIT 1', ['RATE_LIMIT_MAX_MESSAGES']);
+        if (existingMax.length > 0) {
+            await pool.execute('UPDATE config SET value_text = ? WHERE key_name = ?', [String(maxMessages), 'RATE_LIMIT_MAX_MESSAGES']);
+        } else {
+            await pool.execute('INSERT INTO config (key_name, value_text) VALUES (?, ?)', ['RATE_LIMIT_MAX_MESSAGES', String(maxMessages)]);
+        }
+        
+        // Save timeWindow
+        const [existingTime] = await pool.execute('SELECT id FROM config WHERE key_name = ? LIMIT 1', ['RATE_LIMIT_TIME_WINDOW']);
+        if (existingTime.length > 0) {
+            await pool.execute('UPDATE config SET value_text = ? WHERE key_name = ?', [String(timeWindowSeconds), 'RATE_LIMIT_TIME_WINDOW']);
+        } else {
+            await pool.execute('INSERT INTO config (key_name, value_text) VALUES (?, ?)', ['RATE_LIMIT_TIME_WINDOW', String(timeWindowSeconds)]);
+        }
+        
+        res.json({ success: true, message: 'Configurações de rate limit atualizadas' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get rate limit status
+app.get('/api/rate-limit/status', (req, res) => {
+    const status = globalRateLimiter.getStatus();
+    // Format for frontend
+    res.json({
+        current: status.current,
+        maxMessages: status.max,
+        timeWindowSeconds: status.timeWindow,
+        remaining: status.remaining,
+        timeUntilNext: status.timeUntilNext
+    });
+});
+
+// Get queue status
+app.get('/api/queue/status', (req, res) => {
+    const status = UserMonitor.getQueueStatus();
+    res.json({ success: true, data: status });
+});
+
+// ========================= END RATE LIMIT & QUEUE API =========================
 
 // Preview Post
 app.post('/api/preview', upload.single('image'), async (req, res) => {

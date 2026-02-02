@@ -1,6 +1,6 @@
 /**
  * Simple rate limiter to prevent bot spam and API abuse
- * Limits to 5 messages per minute
+ * Configurable limits - can be changed via admin panel
  */
 
 class RateLimiter {
@@ -8,6 +8,43 @@ class RateLimiter {
         this.maxMessages = maxMessages;
         this.timeWindow = timeWindow;
         this.messageTimestamps = [];
+        this.onStatusChange = null; // Callback for status updates
+    }
+
+    /**
+     * Set callback for status changes
+     */
+    setStatusChangeCallback(callback) {
+        this.onStatusChange = callback;
+    }
+
+    /**
+     * Notify status change
+     */
+    notifyStatusChange() {
+        if (this.onStatusChange) {
+            this.onStatusChange(this.getStatusForBroadcast());
+        }
+    }
+
+    /**
+     * Update rate limit settings
+     */
+    updateSettings(maxMessages, timeWindowSeconds) {
+        this.maxMessages = parseInt(maxMessages) || 5;
+        this.timeWindow = (parseInt(timeWindowSeconds) || 60) * 1000;
+        console.log(`[RateLimiter] ⚙️ Configuração atualizada: ${this.maxMessages} mensagens por ${timeWindowSeconds}s`);
+        this.notifyStatusChange();
+    }
+
+    /**
+     * Get current settings
+     */
+    getSettings() {
+        return {
+            maxMessages: this.maxMessages,
+            timeWindowSeconds: this.timeWindow / 1000
+        };
     }
 
     /**
@@ -25,6 +62,7 @@ class RateLimiter {
         // Check if we're under the limit
         if (this.messageTimestamps.length < this.maxMessages) {
             this.messageTimestamps.push(now);
+            this.notifyStatusChange();
             return true;
         }
 
@@ -40,11 +78,33 @@ class RateLimiter {
             timestamp => now - timestamp < this.timeWindow
         );
 
+        // Calculate time until next slot is available
+        let timeUntilNext = 0;
+        if (this.messageTimestamps.length >= this.maxMessages && this.messageTimestamps.length > 0) {
+            const oldestTimestamp = Math.min(...this.messageTimestamps);
+            timeUntilNext = Math.max(0, (oldestTimestamp + this.timeWindow - now) / 1000);
+        }
+
         return {
             current: this.messageTimestamps.length,
             max: this.maxMessages,
             timeWindow: this.timeWindow / 1000, // in seconds
-            remaining: this.maxMessages - this.messageTimestamps.length
+            remaining: Math.max(0, this.maxMessages - this.messageTimestamps.length),
+            timeUntilNext: Math.ceil(timeUntilNext)
+        };
+    }
+
+    /**
+     * Get status formatted for broadcast
+     */
+    getStatusForBroadcast() {
+        const status = this.getStatus();
+        return {
+            current: status.current,
+            maxMessages: status.max,
+            timeWindowSeconds: status.timeWindow,
+            remaining: status.remaining,
+            timeUntilNext: status.timeUntilNext
         };
     }
 
@@ -53,6 +113,7 @@ class RateLimiter {
      */
     reset() {
         this.messageTimestamps = [];
+        this.notifyStatusChange();
     }
 }
 

@@ -193,6 +193,69 @@
                         </div>
                     </div>
 
+                    <!-- Queue & Rate Limit Status -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                        <!-- Queue Status Card -->
+                        <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-purple-500">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-lg font-semibold text-gray-800">
+                                    <i class="fas fa-list-ol text-purple-500 mr-2"></i>Fila de Promoções
+                                </h3>
+                                <span id="queue-status-badge" class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600">Parado</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="text-center p-3 bg-purple-50 rounded-lg">
+                                    <p class="text-2xl font-bold text-purple-600" id="queue-length">0</p>
+                                    <p class="text-xs text-gray-500">Na fila</p>
+                                </div>
+                                <div class="text-center p-3 bg-purple-50 rounded-lg">
+                                    <p class="text-2xl font-bold text-purple-600" id="queue-eta">0s</p>
+                                    <p class="text-xs text-gray-500">Tempo estimado</p>
+                                </div>
+                            </div>
+                            <div class="mt-3 flex items-center justify-between text-sm text-gray-500">
+                                <span><i class="fas fa-clock mr-1"></i>Delay: <span id="queue-delay">10</span>s</span>
+                                <span><i class="fas fa-hourglass-half mr-1"></i>Espera média: <span id="queue-avg-wait">0</span>s</span>
+                            </div>
+                        </div>
+
+                        <!-- Rate Limit Status Card -->
+                        <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-orange-500">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-lg font-semibold text-gray-800">
+                                    <i class="fas fa-tachometer-alt text-orange-500 mr-2"></i>Rate Limit
+                                </h3>
+                                <button onclick="showTab('configuracoes'); setTimeout(() => document.getElementById('rate-limit-section')?.scrollIntoView({behavior:'smooth'}), 100)" class="text-xs text-blue-600 hover:underline">
+                                    <i class="fas fa-cog mr-1"></i>Configurar
+                                </button>
+                            </div>
+                            <div class="grid grid-cols-4 gap-2">
+                                <div class="text-center p-3 bg-orange-50 rounded-lg">
+                                    <p class="text-xl font-bold text-orange-600"><span id="rate-current">0</span>/<span id="rate-max">5</span></p>
+                                    <p class="text-xs text-gray-500">Mensagens</p>
+                                </div>
+                                <div class="text-center p-3 bg-orange-50 rounded-lg">
+                                    <p class="text-xl font-bold text-orange-600" id="rate-window">60</p>
+                                    <p class="text-xs text-gray-500">Janela (s)</p>
+                                </div>
+                                <div class="text-center p-3 bg-orange-50 rounded-lg">
+                                    <p class="text-xl font-bold text-orange-600" id="rate-remaining">5</p>
+                                    <p class="text-xs text-gray-500">Restantes</p>
+                                </div>
+                                <div class="text-center p-3 bg-orange-50 rounded-lg" id="rate-cooldown-container">
+                                    <p class="text-xl font-bold text-orange-600" id="rate-cooldown">0s</p>
+                                    <p class="text-xs text-gray-500">Libera em</p>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <div class="w-full bg-gray-200 rounded-full h-2">
+                                    <div id="rate-progress" class="bg-orange-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                                </div>
+                                <p class="text-xs text-gray-400 mt-1 text-center" id="rate-status-text">Disponível para enviar</p>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Charts -->
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
                         <div class="bg-white rounded-xl shadow-md p-6">
@@ -483,6 +546,63 @@
 
                             <div id="excludedUrlsList" class="space-y-2 max-h-60 overflow-y-auto">
                                 <p class="text-gray-500 text-sm">Carregando...</p>
+                            </div>
+                        </div>
+
+                        <!-- Rate Limit Configuration -->
+                        <div id="rate-limit-section" class="bg-white rounded-xl shadow-md p-6 lg:col-span-2">
+                            <h3 class="text-xl font-bold mb-4 text-gray-800">
+                                <i class="fas fa-tachometer-alt text-orange-500 mr-2"></i>Configuração de Rate Limit
+                            </h3>
+                            <p class="text-sm text-gray-600 mb-4">
+                                Limite de mensagens enviadas pelo bot para evitar bloqueios do Telegram. 
+                                O Telegram permite aproximadamente 30 mensagens por segundo para bots, mas é recomendado manter um limite mais baixo.
+                            </p>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        <i class="fas fa-envelope text-gray-500 mr-1"></i>Máximo de Mensagens
+                                    </label>
+                                    <input type="number" id="rate-limit-max" min="1" max="30" value="5" 
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500">
+                                    <p class="text-xs text-gray-400 mt-1">Quantidade máxima de mensagens na janela</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        <i class="fas fa-clock text-gray-500 mr-1"></i>Janela de Tempo (segundos)
+                                    </label>
+                                    <input type="number" id="rate-limit-window" min="10" max="300" value="60" 
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500">
+                                    <p class="text-xs text-gray-400 mt-1">Período em segundos para o limite</p>
+                                </div>
+                                <div class="flex items-end">
+                                    <button onclick="saveRateLimitSettings()" class="w-full px-6 py-2 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition-colors">
+                                        <i class="fas fa-save mr-2"></i>Salvar Rate Limit
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-orange-50 p-3 rounded-lg border border-orange-200 text-sm">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <i class="fas fa-info-circle text-orange-500"></i>
+                                    <strong class="text-orange-800">Status Atual</strong>
+                                </div>
+                                <div class="grid grid-cols-3 gap-4 text-center">
+                                    <div>
+                                        <span class="text-lg font-bold text-orange-600" id="rate-config-current">0</span>
+                                        <span class="text-gray-600">/<span id="rate-config-max">5</span></span>
+                                        <p class="text-xs text-gray-500">Mensagens enviadas</p>
+                                    </div>
+                                    <div>
+                                        <span class="text-lg font-bold text-orange-600" id="rate-config-remaining">5</span>
+                                        <p class="text-xs text-gray-500">Disponíveis</p>
+                                    </div>
+                                    <div>
+                                        <span class="text-lg font-bold text-orange-600" id="rate-config-reset">0s</span>
+                                        <p class="text-xs text-gray-500">Próximo reset</p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -2019,6 +2139,12 @@ console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detect
                                 loadNoAffiliatePromotions();
                             }
                             break;
+                        case 'queue_status_update':
+                            updateQueueDisplay(message.data);
+                            break;
+                        case 'rate_limit_update':
+                            updateRateLimitDisplay(message.data);
+                            break;
                         case 'pong':
                             // Connection alive
                             break;
@@ -2777,6 +2903,206 @@ console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detect
                 }
             }
         }
+
+        // --- Queue & Rate Limit Functions ---
+        
+        function formatTime(seconds) {
+            if (seconds < 60) return `${Math.round(seconds)}s`;
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.round(seconds % 60);
+            return `${mins}m ${secs}s`;
+        }
+
+        function updateQueueDisplay(data) {
+            // Update dashboard cards
+            const queueLength = document.getElementById('queue-length');
+            const queueEta = document.getElementById('queue-eta');
+            const queueDelay = document.getElementById('queue-delay');
+            const queueAvgWait = document.getElementById('queue-avg-wait');
+            const queueStatusBadge = document.getElementById('queue-status-badge');
+
+            if (queueLength) queueLength.textContent = data.queueLength || 0;
+            if (queueEta) queueEta.textContent = formatTime(data.estimatedTimeSeconds || 0);
+            if (queueDelay) queueDelay.textContent = data.promotionDelay || 10;
+            if (queueAvgWait) queueAvgWait.textContent = Math.round(data.avgWaitTimeSeconds || 0);
+            
+            if (queueStatusBadge) {
+                if (data.isProcessing) {
+                    queueStatusBadge.textContent = 'Processando';
+                    queueStatusBadge.className = 'px-2 py-1 text-xs rounded-full bg-green-100 text-green-600';
+                } else if (data.queueLength > 0) {
+                    queueStatusBadge.textContent = 'Aguardando';
+                    queueStatusBadge.className = 'px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-600';
+                } else {
+                    queueStatusBadge.textContent = 'Parado';
+                    queueStatusBadge.className = 'px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600';
+                }
+            }
+        }
+
+        function updateRateLimitDisplay(data) {
+            // Dashboard rate limit card
+            const rateCurrent = document.getElementById('rate-current');
+            const rateMax = document.getElementById('rate-max');
+            const rateWindow = document.getElementById('rate-window');
+            const rateRemaining = document.getElementById('rate-remaining');
+            const rateProgress = document.getElementById('rate-progress');
+            const rateCooldown = document.getElementById('rate-cooldown');
+            const rateCooldownContainer = document.getElementById('rate-cooldown-container');
+            const rateStatusText = document.getElementById('rate-status-text');
+
+            if (rateCurrent) rateCurrent.textContent = data.current || 0;
+            if (rateMax) rateMax.textContent = data.maxMessages || 5;
+            if (rateWindow) rateWindow.textContent = data.timeWindowSeconds || 60;
+            if (rateRemaining) rateRemaining.textContent = data.remaining || data.maxMessages || 5;
+            
+            // Update cooldown display
+            const timeUntilNext = data.timeUntilNext || 0;
+            if (rateCooldown) rateCooldown.textContent = formatTime(timeUntilNext);
+            
+            // Update cooldown container style based on status
+            if (rateCooldownContainer) {
+                if (timeUntilNext > 0) {
+                    rateCooldownContainer.className = 'text-center p-3 bg-red-50 rounded-lg animate-pulse';
+                    if (rateCooldown) rateCooldown.className = 'text-xl font-bold text-red-600';
+                } else {
+                    rateCooldownContainer.className = 'text-center p-3 bg-green-50 rounded-lg';
+                    if (rateCooldown) rateCooldown.className = 'text-xl font-bold text-green-600';
+                }
+            }
+            
+            // Update status text
+            if (rateStatusText) {
+                const remaining = data.remaining || data.maxMessages || 5;
+                if (timeUntilNext > 0) {
+                    rateStatusText.textContent = `⏳ Rate limit atingido! Aguarde ${formatTime(timeUntilNext)}`;
+                    rateStatusText.className = 'text-xs text-red-500 mt-1 text-center font-medium';
+                } else if (remaining <= 1) {
+                    rateStatusText.textContent = `⚠️ Quase no limite - ${remaining} mensagem restante`;
+                    rateStatusText.className = 'text-xs text-yellow-500 mt-1 text-center font-medium';
+                } else {
+                    rateStatusText.textContent = `✅ Disponível para enviar (${remaining} restantes)`;
+                    rateStatusText.className = 'text-xs text-green-500 mt-1 text-center font-medium';
+                }
+            }
+            
+            if (rateProgress) {
+                const percentage = ((data.current || 0) / (data.maxMessages || 5)) * 100;
+                rateProgress.style.width = `${Math.min(percentage, 100)}%`;
+                
+                // Change color based on usage
+                if (percentage >= 80) {
+                    rateProgress.className = 'bg-red-500 h-2 rounded-full transition-all duration-300';
+                } else if (percentage >= 50) {
+                    rateProgress.className = 'bg-yellow-500 h-2 rounded-full transition-all duration-300';
+                } else {
+                    rateProgress.className = 'bg-orange-500 h-2 rounded-full transition-all duration-300';
+                }
+            }
+
+            // Config section rate limit display
+            const rateConfigCurrent = document.getElementById('rate-config-current');
+            const rateConfigMax = document.getElementById('rate-config-max');
+            const rateConfigRemaining = document.getElementById('rate-config-remaining');
+            const rateConfigReset = document.getElementById('rate-config-reset');
+
+            if (rateConfigCurrent) rateConfigCurrent.textContent = data.current || 0;
+            if (rateConfigMax) rateConfigMax.textContent = data.maxMessages || 5;
+            if (rateConfigRemaining) rateConfigRemaining.textContent = data.remaining || data.maxMessages || 5;
+            if (rateConfigReset) rateConfigReset.textContent = formatTime(data.timeUntilNext || 0);
+        }
+
+        async function loadQueueStatus() {
+            try {
+                const res = await fetch('/api/queue/status');
+                if (res.ok) {
+                    const data = await res.json();
+                    updateQueueDisplay(data);
+                }
+            } catch (err) {
+                console.error('Error loading queue status:', err);
+            }
+        }
+
+        async function loadRateLimitStatus() {
+            try {
+                const res = await fetch('/api/rate-limit/status');
+                if (res.ok) {
+                    const data = await res.json();
+                    updateRateLimitDisplay(data);
+                }
+            } catch (err) {
+                console.error('Error loading rate limit status:', err);
+            }
+        }
+
+        async function loadRateLimitSettings() {
+            try {
+                const res = await fetch('/api/rate-limit/settings');
+                if (res.ok) {
+                    const data = await res.json();
+                    const maxInput = document.getElementById('rate-limit-max');
+                    const windowInput = document.getElementById('rate-limit-window');
+                    
+                    if (maxInput) maxInput.value = data.maxMessages || 5;
+                    if (windowInput) windowInput.value = data.timeWindowSeconds || 60;
+                }
+            } catch (err) {
+                console.error('Error loading rate limit settings:', err);
+            }
+        }
+
+        async function saveRateLimitSettings() {
+            const maxMessages = parseInt(document.getElementById('rate-limit-max').value) || 5;
+            const timeWindowSeconds = parseInt(document.getElementById('rate-limit-window').value) || 60;
+
+            // Validate
+            if (maxMessages < 1 || maxMessages > 30) {
+                showToast('Máximo de mensagens deve ser entre 1 e 30', 'error');
+                return;
+            }
+            if (timeWindowSeconds < 10 || timeWindowSeconds > 300) {
+                showToast('Janela de tempo deve ser entre 10 e 300 segundos', 'error');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/rate-limit/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ maxMessages, timeWindowSeconds })
+                });
+
+                if (res.ok) {
+                    showToast('Rate limit atualizado com sucesso!', 'success');
+                    loadRateLimitStatus();
+                } else {
+                    const error = await res.json();
+                    showToast(error.error || 'Erro ao salvar rate limit', 'error');
+                }
+            } catch (err) {
+                console.error('Error saving rate limit:', err);
+                showToast('Erro de conexão', 'error');
+            }
+        }
+
+        // Load queue and rate limit status on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initial load of queue and rate limit
+            loadQueueStatus();
+            loadRateLimitStatus();
+            loadRateLimitSettings();
+
+            // Refresh rate limit status every 5 seconds for accurate countdown
+            setInterval(() => {
+                loadRateLimitStatus();
+            }, 5000);
+
+            // Refresh queue status every 30 seconds as fallback (WebSocket should handle real-time)
+            setInterval(() => {
+                loadQueueStatus();
+            }, 30000);
+        });
     </script>
 </body>
 </html>
