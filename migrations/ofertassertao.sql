@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS excluded_urls (
     INDEX idx_active (active)
 );
 
--- Tabela para promoções pendentes de aprovação (fallback quando IA falha)
+-- Tabela para promoções pendentes de aprovação (fallback quando IA falha ou sem afiliado)
 CREATE TABLE IF NOT EXISTS pending_promotions (
     id INT AUTO_INCREMENT PRIMARY KEY,
     original_text TEXT NOT NULL,
@@ -122,10 +122,12 @@ CREATE TABLE IF NOT EXISTS pending_promotions (
     affiliate_urls TEXT,
     suggested_category VARCHAR(50),
     status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+    reason ENUM('ai_fallback', 'no_affiliate') DEFAULT 'ai_fallback',
     source VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     processed_at TIMESTAMP NULL,
     INDEX idx_status (status),
+    INDEX idx_reason (reason),
     INDEX idx_created_at (created_at)
 );
 

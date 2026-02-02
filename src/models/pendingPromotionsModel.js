@@ -1,6 +1,6 @@
 /**
  * Pending Promotions Model
- * Handles promotions that need manual approval (AI fallback cases)
+ * Handles promotions that need manual approval (AI fallback cases and no-affiliate cases)
  */
 
 const { pool } = require('../config/db');
@@ -8,6 +8,8 @@ const { pool } = require('../config/db');
 class PendingPromotions {
     /**
      * Add a new pending promotion
+     * @param {Object} data - Promotion data
+     * @param {string} data.reason - 'ai_fallback' or 'no_affiliate'
      */
     static async add(data) {
         const {
@@ -20,13 +22,14 @@ class PendingPromotions {
             urls,
             affiliateUrls,
             suggestedCategory,
-            source
+            source,
+            reason = 'ai_fallback'
         } = data;
 
         const [result] = await pool.execute(
             `INSERT INTO pending_promotions 
-            (original_text, processed_text, product_name, price, coupon, image_path, urls, affiliate_urls, suggested_category, source, status) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+            (original_text, processed_text, product_name, price, coupon, image_path, urls, affiliate_urls, suggested_category, source, status, reason) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
             [
                 originalText || '',
                 processedText || '',
@@ -37,7 +40,8 @@ class PendingPromotions {
                 JSON.stringify(urls || []),
                 JSON.stringify(affiliateUrls || {}),
                 suggestedCategory || 'Variados',
-                source || 'unknown'
+                source || 'unknown',
+                reason
             ]
         );
 
@@ -45,12 +49,12 @@ class PendingPromotions {
     }
 
     /**
-     * Get all pending promotions
+     * Get all pending promotions (AI fallback only)
      */
     static async getPending() {
         const [rows] = await pool.execute(
             `SELECT * FROM pending_promotions 
-            WHERE status = 'pending' 
+            WHERE status = 'pending' AND (reason = 'ai_fallback' OR reason IS NULL)
             ORDER BY created_at DESC`
         );
         
@@ -62,11 +66,38 @@ class PendingPromotions {
     }
 
     /**
-     * Get pending count
+     * Get all pending promotions without affiliate links
+     */
+    static async getNoAffiliate() {
+        const [rows] = await pool.execute(
+            `SELECT * FROM pending_promotions 
+            WHERE status = 'pending' AND reason = 'no_affiliate'
+            ORDER BY created_at DESC`
+        );
+        
+        return rows.map(row => ({
+            ...row,
+            urls: JSON.parse(row.urls || '[]'),
+            affiliate_urls: JSON.parse(row.affiliate_urls || '{}')
+        }));
+    }
+
+    /**
+     * Get pending count (AI fallback)
      */
     static async getPendingCount() {
         const [rows] = await pool.execute(
-            `SELECT COUNT(*) as count FROM pending_promotions WHERE status = 'pending'`
+            `SELECT COUNT(*) as count FROM pending_promotions WHERE status = 'pending' AND (reason = 'ai_fallback' OR reason IS NULL)`
+        );
+        return rows[0].count;
+    }
+
+    /**
+     * Get no-affiliate pending count
+     */
+    static async getNoAffiliateCount() {
+        const [rows] = await pool.execute(
+            `SELECT COUNT(*) as count FROM pending_promotions WHERE status = 'pending' AND reason = 'no_affiliate'`
         );
         return rows[0].count;
     }

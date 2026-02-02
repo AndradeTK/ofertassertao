@@ -606,7 +606,7 @@ app.post('/api/cookies/clear-profile', async (req, res) => {
 
 // ========================= PENDING PROMOTIONS API =========================
 
-// Get all pending promotions
+// Get all pending promotions (AI fallback)
 app.get('/api/pending-promotions', async (req, res) => {
     try {
         const pending = await PendingPromotions.getPending();
@@ -617,10 +617,31 @@ app.get('/api/pending-promotions', async (req, res) => {
     }
 });
 
-// Get pending promotions count
+// Get pending promotions count (AI fallback)
 app.get('/api/pending-promotions/count', async (req, res) => {
     try {
         const count = await PendingPromotions.getPendingCount();
+        res.json({ success: true, count });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get all no-affiliate promotions
+app.get('/api/no-affiliate-promotions', async (req, res) => {
+    try {
+        const pending = await PendingPromotions.getNoAffiliate();
+        res.json({ success: true, data: pending });
+    } catch (err) {
+        console.error('Error getting no-affiliate promotions:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get no-affiliate promotions count
+app.get('/api/no-affiliate-promotions/count', async (req, res) => {
+    try {
+        const count = await PendingPromotions.getNoAffiliateCount();
         res.json({ success: true, count });
     } catch (err) {
         res.status(500).json({ error: err.message });

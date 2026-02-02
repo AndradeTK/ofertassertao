@@ -236,15 +236,25 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
 
         console.log(`[3/8] Gerando links de afiliado para ${urls.length} URL(s)...`);
         const affiliateUrls = {};
+        const platformsDetected = [];
+        let hasRealAffiliate = false;
+        
         for (let i = 0; i < urls.length; i++) {
             try {
                 const { affiliateUrl, platform } = await generateAffiliateLink(urls[i]);
                 affiliateUrls[urls[i]] = affiliateUrl;
+                platformsDetected.push(platform);
                 console.log(`[3/8] ✅ URL ${i+1}: ${platform} -> ${affiliateUrl}`);
+                
+                // Check if it's a real affiliate platform (not original, error, or disabled)
+                if (!['original', 'error'].includes(platform) && !platform.endsWith('-disabled')) {
+                    hasRealAffiliate = true;
+                }
             } catch (linkErr) {
                 logger.error(`Failed to generate affiliate link for ${urls[i]}`, { error: linkErr.message });
                 // Continue with original URL if affiliate generation fails
                 affiliateUrls[urls[i]] = urls[i];
+                platformsDetected.push('error');
             }
         }
 
@@ -256,6 +266,67 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
                 new RegExp(escapeRegex(originalUrl), 'g'),
                 affiliateUrl
             );
+        }
+        
+        // If no real affiliate links were generated, save to pending queue for manual approval
+        if (!hasRealAffiliate) {
+            logger.info('[3/8] ⚠️ No affiliate links generated - saving to pending queue');
+            console.log(`[3/8] ⚠️ Nenhum link de afiliado - salvando para aprovação manual`);
+            
+            // Determine source from URL
+            let source = platformsDetected[0] || 'unknown';
+            if (source === 'original' || source === 'error') {
+                // Try to detect from URL hostname
+                try {
+                    const hostname = new URL(urls[0]).hostname.toLowerCase();
+                    if (hostname.includes('kabum')) source = 'kabum';
+                    else if (hostname.includes('pichau')) source = 'pichau';
+                    else if (hostname.includes('terabyte')) source = 'terabyte';
+                    else if (hostname.includes('magalu') || hostname.includes('magazineluiza')) source = 'magalu';
+                    else if (hostname.includes('casasbahia')) source = 'casasbahia';
+                    else if (hostname.includes('americanas')) source = 'americanas';
+                    else source = hostname.split('.')[0];
+                } catch (e) {
+                    source = 'unknown';
+                }
+            }
+            
+            // Save to pending_promotions table with reason 'no_affiliate'
+            const pendingData = {
+                originalText: text,
+                processedText: processedText,
+                productName: '',
+                price: '',
+                coupon: '',
+                imagePath: attachedPhotoUrl || '',
+                urls: urls,
+                affiliateUrls: affiliateUrls,
+                suggestedCategory: null,
+                source: source,
+                reason: 'no_affiliate'
+            };
+            
+            const pendingId = await PendingPromotions.add(pendingData);
+            logger.info(`Promotion saved to pending queue (no affiliate) with ID: ${pendingId}`);
+            console.log(`[3/8] ✅ Promoção salva na fila (sem afiliado) com ID: ${pendingId}`);
+            
+            // Broadcast notification to all connected WebSocket clients
+            broadcastToClients('new_no_affiliate_promotion', {
+                id: pendingId,
+                source: source,
+                url: urls[0]
+            });
+            
+            // Get updated count for badge
+            const noAffiliateCount = await PendingPromotions.getNoAffiliateCount();
+            broadcastToClients('no_affiliate_count_update', { count: noAffiliateCount });
+            
+            return {
+                success: true,
+                noAffiliate: true,
+                pendingId: pendingId,
+                message: 'Promoção salva para aprovação manual (sem link de afiliado)'
+            };
         }
 
         logger.info('[4/8] Fetching metadata...');
