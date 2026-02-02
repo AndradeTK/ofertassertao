@@ -220,6 +220,23 @@ function setupConnectionHandlers() {
 
     logger.info('Setting up connection handlers for auto-reconnect');
 
+    // Override the client's disconnect method to catch disconnections
+    const originalDisconnect = client.disconnect.bind(client);
+    client.disconnect = async function(...args) {
+        logger.warn('Client disconnect called');
+        isConnected = false;
+        stopKeepAlive();
+        
+        // Notify frontend about disconnection
+        broadcastToClients({
+            type: 'connection_status',
+            status: 'disconnected',
+            message: 'Conexão encerrada'
+        });
+        
+        return originalDisconnect(...args);
+    };
+
     // Listen for disconnect events via client's internal mechanisms
     if (client._connection) {
         const originalOnDisconnect = client._connection._onDisconnect?.bind(client._connection);
@@ -258,6 +275,31 @@ function setupConnectionHandlers() {
             });
             return originalErrorHandler(...args);
         };
+    }
+}
+
+/**
+ * Check connection and reconnect if needed
+ */
+async function checkConnectionAndReconnect() {
+    if (!client) return false;
+    
+    try {
+        // Try a simple API call to check connection
+        await client.getMe();
+        isConnected = true;
+        return true;
+    } catch (err) {
+        logger.warn(`Connection check failed: ${err.message}`);
+        isConnected = false;
+        
+        // If we're not already reconnecting, schedule one
+        if (!reconnectTimeout && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            stopKeepAlive();
+            scheduleReconnect();
+        }
+        
+        return false;
     }
 }
 
@@ -373,32 +415,36 @@ function startKeepAlive() {
         clearInterval(keepAliveInterval);
     }
 
-    logger.info('Starting keep-alive system (ping every 3 minutes)');
+    logger.info('Starting keep-alive system (ping every 2 minutes)');
 
-    // Send a ping every 3 minutes to keep connection alive
+    // Send a ping every 2 minutes to keep connection alive
     keepAliveInterval = setInterval(async () => {
-        if (!client || !isConnected) {
+        if (!client) {
             return;
         }
 
         try {
             // Use getMe() as a simple keep-alive check
             const me = await client.getMe();
+            isConnected = true;
             logger.debug(`Keep-alive: connected as ${me.firstName}`);
         } catch (err) {
             logger.warn(`Keep-alive failed: ${err.message}`);
+            isConnected = false;
             
-            // If ping fails, connection might be dead
-            if (err.message.includes('disconnect') || 
-                err.message.includes('connection') ||
-                err.message.includes('timeout') ||
-                err.message.includes('TIMEOUT')) {
-                isConnected = false;
-                stopKeepAlive();
-                scheduleReconnect();
-            }
+            // If ping fails, connection might be dead - try to reconnect
+            stopKeepAlive();
+            
+            // Notify frontend
+            broadcastToClients({
+                type: 'connection_status',
+                status: 'disconnected',
+                message: 'Keep-alive falhou, tentando reconectar...'
+            });
+            
+            scheduleReconnect();
         }
-    }, 3 * 60 * 1000); // Every 3 minutes
+    }, 2 * 60 * 1000); // Every 2 minutes (more frequent)
 }
 
 /**
@@ -710,12 +756,15 @@ function isDestinationChat(chatId) {
     return destStr === chatStr;
 }
 
+// Maximum retry attempts for failed promotions
+const MAX_RETRY_ATTEMPTS = 3;
+
 /**
  * Add promotion to queue for delayed processing
  */
-function enqueuePromotion(text, photoSource, source = 'unknown') {
-    promotionQueue.push({ text, photoSource, source, addedAt: Date.now() });
-    console.log(`[Queue] ➕ Promoção adicionada à fila (${promotionQueue.length} na fila) - Fonte: ${source}`);
+function enqueuePromotion(text, photoSource, source = 'unknown', retryCount = 0) {
+    promotionQueue.push({ text, photoSource, source, addedAt: Date.now(), retryCount });
+    console.log(`[Queue] ➕ Promoção adicionada à fila (${promotionQueue.length} na fila) - Fonte: ${source}${retryCount > 0 ? ` [tentativa ${retryCount + 1}]` : ''}`);
     
     // Broadcast queue update
     broadcastQueueStatus();
@@ -762,8 +811,9 @@ async function processDirectSendQueue() {
     while (directSendQueue.length > 0) {
         const item = directSendQueue[0]; // Peek at first item
         const waitTime = Math.floor((Date.now() - item.addedAt) / 1000);
+        const retryCount = item.retryCount || 0;
         
-        console.log(`[DirectQueue] 📤 Processando envio (aguardou ${waitTime}s, restam ${directSendQueue.length})`);
+        console.log(`[DirectQueue] 📤 Processando envio (aguardou ${waitTime}s, restam ${directSendQueue.length})${retryCount > 0 ? ` [tentativa ${retryCount + 1}/${MAX_RETRY_ATTEMPTS}]` : ''}`);
         
         // Check rate limit before sending
         if (!globalRateLimiter.canProcess()) {
@@ -779,16 +829,20 @@ async function processDirectSendQueue() {
         directSendQueue.shift();
         broadcastQueueStatus();
         
+        let sendSuccess = false;
+        let shouldRetry = false;
+        
         try {
             // Call the send callback
             if (item.sendCallback && typeof item.sendCallback === 'function') {
                 await item.sendCallback();
                 console.log(`[DirectQueue] ✅ Promoção ENVIADA: ${item.productName || 'Produto'}`);
+                sendSuccess = true;
             }
         } catch (err) {
             console.error(`[DirectQueue] ❌ Erro ao enviar: ${err.message}`);
             
-            // If rate limit error, re-queue and wait
+            // If rate limit error, re-queue and wait (don't count as retry)
             if (err.message && (err.message.includes('Too Many Requests') || err.message.includes('FLOOD'))) {
                 directSendQueue.unshift(item);
                 console.log(`[DirectQueue] ⏱️ Rate limit do Telegram! Aguardando 65s...`);
@@ -796,6 +850,51 @@ async function processDirectSendQueue() {
                 await new Promise(resolve => setTimeout(resolve, 65000));
                 continue;
             }
+            
+            // Check if error is recoverable (network, timeout, connection issues)
+            const recoverableErrors = [
+                'timeout', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND',
+                'network', 'connection', 'socket', 'disconnected',
+                'Telegram server error', 'request failed', 'internal error',
+                'Bad Request', 'invalid file'
+            ];
+            
+            const isRecoverable = recoverableErrors.some(e => 
+                err.message && err.message.toLowerCase().includes(e.toLowerCase())
+            );
+            
+            if (isRecoverable && retryCount < MAX_RETRY_ATTEMPTS - 1) {
+                shouldRetry = true;
+            } else if (retryCount >= MAX_RETRY_ATTEMPTS - 1) {
+                console.log(`[DirectQueue] ⚠️ Máximo de tentativas atingido (${MAX_RETRY_ATTEMPTS}) - promoção descartada`);
+            } else {
+                // Unknown error - still try to retry if under limit
+                if (retryCount < MAX_RETRY_ATTEMPTS - 1) {
+                    shouldRetry = true;
+                } else {
+                    console.log(`[DirectQueue] ⚠️ Erro após ${MAX_RETRY_ATTEMPTS} tentativas - promoção descartada`);
+                }
+            }
+        }
+        
+        // Re-queue failed item for retry if needed
+        if (shouldRetry) {
+            const newRetryCount = retryCount + 1;
+            console.log(`[DirectQueue] 🔄 Re-enfileirando promoção para nova tentativa (${newRetryCount}/${MAX_RETRY_ATTEMPTS})`);
+            
+            // Add back to end of queue with incremented retry count
+            directSendQueue.push({
+                ...item,
+                retryCount: newRetryCount,
+                addedAt: Date.now() // Reset wait time for retry
+            });
+            broadcastQueueStatus();
+            
+            // Wait a bit before continuing (backoff)
+            const backoffDelay = Math.min(5000 * newRetryCount, 30000); // 5s, 10s, 15s... max 30s
+            console.log(`[DirectQueue] ⏳ Aguardando ${backoffDelay/1000}s antes de continuar (backoff)...`);
+            await new Promise(resolve => setTimeout(resolve, backoffDelay));
+            continue;
         }
         
         // Wait before processing next item
@@ -862,11 +961,14 @@ async function processPromotionQueue() {
     while (promotionQueue.length > 0) {
         const item = promotionQueue.shift();
         const waitTime = Math.floor((Date.now() - item.addedAt) / 1000);
+        const retryCount = item.retryCount || 0;
         
-        console.log(`[Queue] 📤 Processando promoção (aguardou ${waitTime}s na fila, restam ${promotionQueue.length})`);
+        console.log(`[Queue] 📤 Processando promoção (aguardou ${waitTime}s na fila, restam ${promotionQueue.length})${retryCount > 0 ? ` [tentativa ${retryCount + 1}/${MAX_RETRY_ATTEMPTS}]` : ''}`);
         broadcastQueueStatus();
         
         let wasSkipped = false;
+        let sendSuccess = false;
+        let shouldRetry = false;
         
         try {
             const result = await handlePromotionFlow(item.text, null, item.photoSource);
@@ -875,13 +977,14 @@ async function processPromotionQueue() {
                 wasSkipped = true;
             } else {
                 console.log(`[Queue] ✅ Promoção ENVIADA com sucesso`);
+                sendSuccess = true;
             }
         } catch (err) {
             console.error(`[Queue] ❌ Erro ao processar: ${err.message}`);
             
             // Check if it's a rate limit error - if so, re-queue the item and wait
             if (err.message && err.message.includes('Rate limit')) {
-                // Put item back at the beginning of the queue
+                // Put item back at the beginning of the queue (don't count as retry)
                 promotionQueue.unshift(item);
                 console.log(`[Queue] ⏱️ Rate limit atingido! Aguardando 65s antes de retentar... (${promotionQueue.length} na fila)`);
                 broadcastQueueStatus();
@@ -890,10 +993,65 @@ async function processPromotionQueue() {
                 await new Promise(resolve => setTimeout(resolve, 65000));
                 continue; // Skip the normal delay and retry immediately
             }
+            
+            // Check if error is recoverable (network, timeout, connection issues)
+            const recoverableErrors = [
+                'timeout', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND',
+                'network', 'connection', 'socket', 'FLOOD_WAIT', 'disconnected',
+                'Telegram server error', 'request failed', 'internal error'
+            ];
+            
+            const isRecoverable = recoverableErrors.some(e => 
+                err.message && err.message.toLowerCase().includes(e.toLowerCase())
+            );
+            
+            // Non-recoverable errors (don't retry these)
+            const nonRecoverableErrors = [
+                'forbidden', 'proibidas', 'Nenhuma URL', 'duplicada', 'already processed'
+            ];
+            
+            const isNonRecoverable = nonRecoverableErrors.some(e => 
+                err.message && err.message.toLowerCase().includes(e.toLowerCase())
+            );
+            
+            if (isNonRecoverable) {
+                console.log(`[Queue] 🚫 Erro não recuperável - promoção descartada`);
+            } else if (isRecoverable && retryCount < MAX_RETRY_ATTEMPTS - 1) {
+                shouldRetry = true;
+            } else if (retryCount >= MAX_RETRY_ATTEMPTS - 1) {
+                console.log(`[Queue] ⚠️ Máximo de tentativas atingido (${MAX_RETRY_ATTEMPTS}) - promoção descartada`);
+            } else {
+                // Unknown error but still try to retry if under limit
+                if (retryCount < MAX_RETRY_ATTEMPTS - 1) {
+                    shouldRetry = true;
+                } else {
+                    console.log(`[Queue] ⚠️ Erro desconhecido após ${MAX_RETRY_ATTEMPTS} tentativas - promoção descartada`);
+                }
+            }
         }
         
-        // Clean up photo file if exists (only if NOT rate limited)
-        if (item.photoSource && item.photoSource.source && !promotionQueue.some(q => q.photoSource?.source === item.photoSource.source)) {
+        // Re-queue failed item for retry if needed
+        if (shouldRetry) {
+            const newRetryCount = retryCount + 1;
+            console.log(`[Queue] 🔄 Re-enfileirando promoção para nova tentativa (${newRetryCount}/${MAX_RETRY_ATTEMPTS})`);
+            
+            // Add back to end of queue with incremented retry count
+            promotionQueue.push({
+                ...item,
+                retryCount: newRetryCount,
+                addedAt: Date.now() // Reset wait time for retry
+            });
+            broadcastQueueStatus();
+            
+            // Wait a bit before continuing (backoff)
+            const backoffDelay = Math.min(5000 * (newRetryCount), 30000); // 5s, 10s, 15s... max 30s
+            console.log(`[Queue] ⏳ Aguardando ${backoffDelay/1000}s antes de continuar (backoff)...`);
+            await new Promise(resolve => setTimeout(resolve, backoffDelay));
+            continue;
+        }
+        
+        // Clean up photo file if exists (only if NOT rate limited and not re-queued)
+        if (!shouldRetry && item.photoSource && item.photoSource.source && !promotionQueue.some(q => q.photoSource?.source === item.photoSource.source)) {
             try {
                 fs.unlinkSync(item.photoSource.source);
             } catch (e) {

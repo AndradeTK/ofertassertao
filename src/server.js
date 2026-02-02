@@ -127,6 +127,11 @@ app.get('/', async (req, res) => {
     res.render('index', { categories, monitored, groupChatId });
 });
 
+// Monitor page - fullscreen monitoring dashboard
+app.get('/monitor', async (req, res) => {
+    res.render('monitor');
+});
+
 app.post('/post-manual', async (req, res) => {
     try {
         await handlePromotionFlow(req.body.content || req.body.text || '');
@@ -759,7 +764,18 @@ app.post('/api/pending-promotions/:id/approve', async (req, res) => {
         if (inviteLink) inlineKeyboard.push([{ text: 'Entrar no Grupo', url: inviteLink }]);
         const replyMarkup = inlineKeyboard.length > 0 ? { inline_keyboard: inlineKeyboard } : undefined;
         
-        const imageSource = promotion.image_path;
+        // Check if image is valid for Telegram (must be public URL or file_id, not localhost)
+        let imageSource = promotion.image_path;
+        if (imageSource) {
+            // Skip localhost/local URLs that Telegram can't access
+            if (imageSource.includes('localhost') || 
+                imageSource.includes('127.0.0.1') || 
+                imageSource.startsWith('/uploads') ||
+                imageSource.includes(':3000')) {
+                console.log(`[Approve] Skipping local image URL: ${imageSource}`);
+                imageSource = null;
+            }
+        }
         
         // Create the send callback function
         const sendCallback = async () => {
@@ -1028,6 +1044,78 @@ app.get('/api/rate-limit/status', (req, res) => {
 app.get('/api/queue/status', (req, res) => {
     const status = UserMonitor.getQueueStatus();
     res.json({ success: true, data: status });
+});
+
+// Get recent sent promotions for monitor page
+app.get('/api/recent-sent', async (req, res) => {
+    try {
+        const { pool } = require('./config/db');
+        const limit = parseInt(req.query.limit) || 10;
+        const [rows] = await pool.query(`
+            SELECT id, product_name, source, price, status, processed_at as sent_at 
+            FROM pending_promotions 
+            WHERE status = 'approved' 
+            ORDER BY processed_at DESC 
+            LIMIT ?
+        `, [limit]);
+        res.json(rows);
+    } catch (err) {
+        console.error('Error getting recent sent:', err.message);
+        res.json([]);
+    }
+});
+
+// Get today's stats for monitor page
+app.get('/api/stats/today', async (req, res) => {
+    try {
+        const { pool } = require('./config/db');
+        const today = new Date().toISOString().split('T')[0];
+        
+        const [sent] = await pool.query(`
+            SELECT COUNT(*) as count FROM pending_promotions 
+            WHERE status = 'approved' AND DATE(processed_at) = ?
+        `, [today]);
+        
+        const [approved] = await pool.query(`
+            SELECT COUNT(*) as count FROM pending_promotions 
+            WHERE status = 'approved' AND DATE(created_at) = ?
+        `, [today]);
+        
+        const [rejected] = await pool.query(`
+            SELECT COUNT(*) as count FROM pending_promotions 
+            WHERE status = 'rejected' AND DATE(processed_at) = ?
+        `, [today]);
+        
+        // Get duplicates from Redis (approximate count)
+        let duplicates = 0;
+        try {
+            const keys = await redis.keys('promo:*');
+            duplicates = keys.length;
+        } catch (e) {
+            // Ignore Redis errors
+        }
+        
+        res.json({
+            sent: sent[0]?.count || 0,
+            approved: approved[0]?.count || 0,
+            rejected: rejected[0]?.count || 0,
+            duplicates: duplicates
+        });
+    } catch (err) {
+        console.error('Error getting stats:', err.message);
+        res.json({ sent: 0, approved: 0, rejected: 0, duplicates: 0 });
+    }
+});
+
+// Get monitored groups for monitor page
+app.get('/api/monitored', async (req, res) => {
+    try {
+        const groups = await Monitoring.getAll();
+        res.json(groups);
+    } catch (err) {
+        console.error('Error getting monitored groups:', err.message);
+        res.json([]);
+    }
 });
 
 // ========================= END RATE LIMIT & QUEUE API =========================
