@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
+const http = require('http');
+const WebSocket = require('ws');
 const { Telegraf } = require('telegraf');
 const multer = require('multer');
 const fs = require('fs');
@@ -12,10 +14,11 @@ const Monitoring = require('./models/monitoringModel');
 const Config = require('./models/configModel');
 const ForbiddenWords = require('./models/forbiddenWordsModel');
 const Settings = require('./models/settingsModel');
+const PendingPromotions = require('./models/pendingPromotionsModel');
 const { classifyAndCaption } = require('./services/aiService');
 const { generateAffiliateLink } = require('./services/affiliateService');
 const { fetchMetadata } = require('./services/metaService');
-const { handlePromotionFlow, initializePromotionFlow } = require('./services/promotionFlow');
+const { handlePromotionFlow, initializePromotionFlow, broadcastToClients } = require('./services/promotionFlow');
 const { startScheduledPostsProcessor } = require('./services/scheduledPostsService');
 const { globalRateLimiter } = require('./services/rateLimiter');
 const UserMonitor = require('./services/userMonitorService');
@@ -32,6 +35,9 @@ const upload = multer({
 });
 
 const app = express();
+
+// WebSocket server reference (initialized later with HTTP server)
+let wss = null;
 
 // Load settings from DB on startup
 async function initializeApp() {
@@ -585,6 +591,268 @@ app.post('/api/cookies/set', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+// ========================= PENDING PROMOTIONS API =========================
+
+// Get all pending promotions
+app.get('/api/pending-promotions', async (req, res) => {
+    try {
+        const pending = await PendingPromotions.getPending();
+        res.json({ success: true, data: pending });
+    } catch (err) {
+        console.error('Error getting pending promotions:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get pending promotions count
+app.get('/api/pending-promotions/count', async (req, res) => {
+    try {
+        const count = await PendingPromotions.getPendingCount();
+        res.json({ success: true, count });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get a single pending promotion
+app.get('/api/pending-promotions/:id', async (req, res) => {
+    try {
+        const promotion = await PendingPromotions.getById(req.params.id);
+        if (!promotion) {
+            return res.status(404).json({ error: 'Promoção não encontrada' });
+        }
+        res.json({ success: true, data: promotion });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Update a pending promotion
+app.put('/api/pending-promotions/:id', async (req, res) => {
+    try {
+        const { product_name, price, coupon, category, processed_text } = req.body;
+        const updated = await PendingPromotions.update(req.params.id, {
+            product_name,
+            price,
+            coupon,
+            suggested_category: category,
+            processed_text
+        });
+        
+        if (!updated) {
+            return res.status(404).json({ error: 'Promoção não encontrada' });
+        }
+        
+        res.json({ success: true, message: 'Promoção atualizada com sucesso' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Approve and send a pending promotion
+app.post('/api/pending-promotions/:id/approve', async (req, res) => {
+    try {
+        const { category } = req.body;
+        const promotion = await PendingPromotions.getById(req.params.id);
+        
+        if (!promotion) {
+            return res.status(404).json({ error: 'Promoção não encontrada' });
+        }
+        
+        // Get thread ID for the category
+        const finalCategory = category || promotion.suggested_category || 'Variados';
+        const threadId = await Category.getThreadIdByName(finalCategory);
+        
+        // Parse URLs
+        let affiliateUrls;
+        try {
+            affiliateUrls = JSON.parse(promotion.affiliate_urls || '{}');
+        } catch (e) {
+            affiliateUrls = {};
+        }
+        
+        const allAffiliateUrls = Object.values(affiliateUrls);
+        
+        // Build the message
+        const productName = promotion.product_name || 'Produto';
+        const price = promotion.price || '';
+        const cupomInfo = promotion.coupon || '';
+        const groupLink = 'https://t.me/ofertasertao';
+        
+        let messageText = `${productName}\n\n`;
+        if (price) messageText += `💰 ${price}\n`;
+        if (cupomInfo) messageText += `🎟️ Cupom: ${cupomInfo}\n`;
+        messageText += '\n';
+        
+        for (const url of allAffiliateUrls) {
+            if (url !== groupLink) {
+                messageText += `🔗 ${url}\n`;
+            }
+        }
+        
+        messageText += `\n📢 Mais ofertas em: \n${groupLink}`;
+        
+        // Get group chat ID
+        const groupChatId = await Config.getGroupChatId() || process.env.GROUP_CHAT_ID;
+        const sendToGeneral = await Config.getSendToGeneral();
+        
+        if (!groupChatId) {
+            return res.status(400).json({ error: 'GROUP_CHAT_ID não configurado' });
+        }
+        
+        const inviteLink = process.env.GROUP_INVITE_LINK || process.env.GROUP_LINK || '';
+        const inlineKeyboard = [];
+        if (inviteLink) inlineKeyboard.push([{ text: 'Entrar no Grupo', url: inviteLink }]);
+        const replyMarkup = inlineKeyboard.length > 0 ? { inline_keyboard: inlineKeyboard } : undefined;
+        
+        // Send the promotion
+        const imageSource = promotion.image_path;
+        
+        if (imageSource) {
+            // Send to General if enabled
+            if (sendToGeneral) {
+                try {
+                    await bot.telegram.sendPhoto(groupChatId, imageSource, {
+                        caption: messageText,
+                        parse_mode: 'HTML',
+                        reply_markup: replyMarkup
+                    });
+                } catch (err) {
+                    console.warn(`Failed to send to General: ${err.message}`);
+                }
+            }
+            
+            // Send to category topic
+            if (threadId) {
+                try {
+                    await bot.telegram.sendPhoto(groupChatId, imageSource, {
+                        caption: messageText,
+                        parse_mode: 'HTML',
+                        message_thread_id: Number(threadId),
+                        reply_markup: replyMarkup
+                    });
+                } catch (err) {
+                    console.warn(`Failed to send to topic ${threadId}: ${err.message}`);
+                }
+            }
+        } else {
+            // Send without image
+            if (sendToGeneral) {
+                try {
+                    await bot.telegram.sendMessage(groupChatId, messageText, {
+                        parse_mode: 'HTML',
+                        reply_markup: replyMarkup
+                    });
+                } catch (err) {
+                    console.warn(`Failed to send to General: ${err.message}`);
+                }
+            }
+            
+            if (threadId) {
+                try {
+                    await bot.telegram.sendMessage(groupChatId, messageText, {
+                        parse_mode: 'HTML',
+                        message_thread_id: Number(threadId),
+                        reply_markup: replyMarkup
+                    });
+                } catch (err) {
+                    console.warn(`Failed to send to topic ${threadId}: ${err.message}`);
+                }
+            }
+        }
+        
+        // Mark as approved
+        await PendingPromotions.approve(req.params.id, finalCategory);
+        
+        // Broadcast updated count
+        const count = await PendingPromotions.getPendingCount();
+        wss.clients.forEach(client => {
+            if (client.readyState === 1) {
+                client.send(JSON.stringify({
+                    type: 'pending_count_update',
+                    data: { count },
+                    timestamp: new Date().toISOString()
+                }));
+            }
+        });
+        
+        res.json({ success: true, message: 'Promoção aprovada e enviada com sucesso' });
+    } catch (err) {
+        console.error('Error approving promotion:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Reject/delete a pending promotion
+app.post('/api/pending-promotions/:id/reject', async (req, res) => {
+    try {
+        const { reason } = req.body;
+        await PendingPromotions.reject(req.params.id, reason);
+        
+        // Broadcast updated count
+        const count = await PendingPromotions.getPendingCount();
+        wss.clients.forEach(client => {
+            if (client.readyState === 1) {
+                client.send(JSON.stringify({
+                    type: 'pending_count_update',
+                    data: { count },
+                    timestamp: new Date().toISOString()
+                }));
+            }
+        });
+        
+        res.json({ success: true, message: 'Promoção rejeitada' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Delete a pending promotion permanently
+app.delete('/api/pending-promotions/:id', async (req, res) => {
+    try {
+        await PendingPromotions.delete(req.params.id);
+        
+        // Broadcast updated count
+        const count = await PendingPromotions.getPendingCount();
+        wss.clients.forEach(client => {
+            if (client.readyState === 1) {
+                client.send(JSON.stringify({
+                    type: 'pending_count_update',
+                    data: { count },
+                    timestamp: new Date().toISOString()
+                }));
+            }
+        });
+        
+        res.json({ success: true, message: 'Promoção excluída' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get pending promotions history
+app.get('/api/pending-promotions/history', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 50;
+        const history = await PendingPromotions.getHistory(limit);
+        res.json({ success: true, data: history });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get categories for dropdown
+app.get('/api/categories', async (req, res) => {
+    try {
+        const categories = await Category.getAll();
+        res.json({ success: true, data: categories });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ========================= END PENDING PROMOTIONS API =========================
 
 // Preview Post
 app.post('/api/preview', upload.single('image'), async (req, res) => {
@@ -1231,7 +1499,53 @@ if (bot) {
 
 // Launch
 const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, async () => {
+
+// Create HTTP server and WebSocket server
+const httpServer = http.createServer(app);
+wss = new WebSocket.Server({ server: httpServer, path: '/ws' });
+
+// WebSocket connection handling
+wss.on('connection', (ws, req) => {
+    console.log('[WebSocket] Nova conexão estabelecida');
+    
+    // Send initial pending count
+    PendingPromotions.getPendingCount().then(count => {
+        ws.send(JSON.stringify({
+            type: 'pending_count_update',
+            data: { count },
+            timestamp: new Date().toISOString()
+        }));
+    }).catch(err => {
+        console.warn('[WebSocket] Error getting initial pending count:', err.message);
+    });
+    
+    ws.on('message', (message) => {
+        try {
+            const data = JSON.parse(message);
+            console.log('[WebSocket] Mensagem recebida:', data.type);
+            
+            // Handle ping/pong for connection health
+            if (data.type === 'ping') {
+                ws.send(JSON.stringify({ type: 'pong', timestamp: new Date().toISOString() }));
+            }
+        } catch (err) {
+            console.warn('[WebSocket] Error parsing message:', err.message);
+        }
+    });
+    
+    ws.on('close', () => {
+        console.log('[WebSocket] Conexão fechada');
+    });
+    
+    ws.on('error', (err) => {
+        console.warn('[WebSocket] Error:', err.message);
+    });
+});
+
+// Re-initialize promotion flow with WebSocket server
+initializePromotionFlow(bot, Config, wss);
+
+const server = httpServer.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   
   // Start scheduled posts processor

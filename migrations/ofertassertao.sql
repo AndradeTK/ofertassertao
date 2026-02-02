@@ -99,6 +99,26 @@ CREATE TABLE IF NOT EXISTS system_logs (
     INDEX idx_type (type)
 );
 
+-- Tabela para promoções pendentes de aprovação (fallback quando IA falha)
+CREATE TABLE IF NOT EXISTS pending_promotions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    original_text TEXT NOT NULL,
+    processed_text TEXT,
+    product_name VARCHAR(255),
+    price VARCHAR(50),
+    coupon VARCHAR(255),
+    image_path TEXT,
+    urls TEXT,
+    affiliate_urls TEXT,
+    suggested_category VARCHAR(50),
+    status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+    source VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP NULL,
+    INDEX idx_status (status),
+    INDEX idx_created_at (created_at)
+);
+
 -- ========================================
 -- Dados de Exemplo (Opcional)
 -- ========================================

@@ -3,6 +3,7 @@ const { pool } = require('../config/db');
 const redis = require('../config/redis');
 const Category = require('../models/categoryModel');
 const ForbiddenWords = require('../models/forbiddenWordsModel');
+const PendingPromotions = require('../models/pendingPromotionsModel');
 const { classifyAndCaption } = require('./aiService');
 const { generateAffiliateLink } = require('./affiliateService');
 const { fetchMetadata } = require('./metaService');
@@ -13,6 +14,7 @@ const logger = createComponentLogger('PromotionFlow');
 
 let bot = null;
 let Config = null;
+let wss = null; // WebSocket server instance
 
 /**
  * Sanitize text to ensure valid UTF-8 encoding
@@ -54,9 +56,29 @@ function sanitizeUtf8(text) {
 }
 
 // Initialize with bot instance (called from server.js)
-function initializePromotionFlow(botInstance, ConfigModel) {
+function initializePromotionFlow(botInstance, ConfigModel, wsServer = null) {
     bot = botInstance;
     Config = ConfigModel;
+    wss = wsServer;
+}
+
+/**
+ * Broadcast message to all connected WebSocket clients
+ */
+function broadcastToClients(eventType, data) {
+    if (!wss) return;
+    
+    const message = JSON.stringify({ type: eventType, data, timestamp: new Date().toISOString() });
+    
+    wss.clients.forEach(client => {
+        if (client.readyState === 1) { // WebSocket.OPEN
+            try {
+                client.send(message);
+            } catch (err) {
+                logger.warn(`WebSocket broadcast error: ${err.message}`);
+            }
+        }
+    });
 }
 
 /**
@@ -248,14 +270,68 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
         logger.info('[5/8] Classifying with AI...');
         console.log(`[5/8] Classificando com IA e extraindo dados...`);
         const ai = await classifyAndCaption({ title: meta.title || '', price: meta.price || '', description: text, url: primaryUrl });
-        logger.info(`AI classification: category="${ai.category}", confidence=${ai.confidence}, isCouponMessage=${ai.isCouponMessage}`);
+        logger.info(`AI classification: category="${ai.category}", confidence=${ai.confidence}, isCouponMessage=${ai.isCouponMessage}, needsApproval=${ai.needsApproval}`);
         console.log(`[5/8] ✅ AI Results:`);
-        console.log(`   - Category: "${ai.category}" (confidence: ${ai.confidence}${ai.confidence < 70 ? ' - fallback' : ''})`);
+        console.log(`   - Category: "${ai.category}" (confidence: ${ai.confidence})`);
         console.log(`   - Title: "${ai.title}"`);
         console.log(`   - Price: "${ai.price}"`);
         console.log(`   - Coupon: "${ai.coupon}"`);
         console.log(`   - Is Coupon Message: ${ai.isCouponMessage}`);
+        console.log(`   - Needs Approval: ${ai.needsApproval || false}`);
         console.log(`   - Meta title: "${meta.title}"`);
+        
+        // If AI failed to classify and needs manual approval, save to pending queue
+        if (ai.needsApproval) {
+            logger.info('[5/8] ⚠️ AI failed to classify - saving to pending queue for manual approval');
+            console.log(`[5/8] ⚠️ IA não conseguiu classificar - salvando para aprovação manual`);
+            
+            // Determine source from URL
+            let source = 'manual';
+            if (primaryUrl.includes('shopee')) source = 'shopee';
+            else if (primaryUrl.includes('mercadolivre') || primaryUrl.includes('mercadolibre')) source = 'mercadolivre';
+            else if (primaryUrl.includes('amazon') || primaryUrl.includes('amzn')) source = 'amazon';
+            else if (primaryUrl.includes('aliexpress')) source = 'aliexpress';
+            else if (primaryUrl.includes('magalu') || primaryUrl.includes('magazineluiza')) source = 'magalu';
+            else if (ctx && ctx.message) source = 'telegram_monitor';
+            
+            // Save to pending_promotions table
+            const pendingData = {
+                original_text: text,
+                processed_text: processedText,
+                product_name: ai.title || meta.title || '',
+                price: ai.price || meta.price || '',
+                coupon: ai.coupon || '',
+                image_path: attachedPhotoUrl || meta.image || '',
+                urls: JSON.stringify(urls),
+                affiliate_urls: JSON.stringify(affiliateUrls),
+                suggested_category: ai.category || null,
+                source: source
+            };
+            
+            const pendingId = await PendingPromotions.add(pendingData);
+            logger.info(`Promotion saved to pending queue with ID: ${pendingId}`);
+            console.log(`[5/8] ✅ Promoção salva na fila de pendentes com ID: ${pendingId}`);
+            
+            // Broadcast notification to all connected WebSocket clients
+            broadcastToClients('new_pending_promotion', {
+                id: pendingId,
+                product_name: pendingData.product_name,
+                price: pendingData.price,
+                source: source,
+                suggested_category: pendingData.suggested_category
+            });
+            
+            // Get updated count for badge
+            const pendingCount = await PendingPromotions.getPendingCount();
+            broadcastToClients('pending_count_update', { count: pendingCount });
+            
+            return {
+                success: true,
+                needsApproval: true,
+                pendingId: pendingId,
+                message: 'Promoção salva para aprovação manual (IA não conseguiu classificar)'
+            };
+        };
         console.log(`   - Meta price: "${meta.price}"`);
 
         logger.info('[6/8] Getting thread ID for category...');
@@ -594,5 +670,6 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
 
 module.exports = {
     handlePromotionFlow,
-    initializePromotionFlow
+    initializePromotionFlow,
+    broadcastToClients
 };

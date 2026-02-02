@@ -70,6 +70,11 @@
                         <i class="fas fa-chart-line w-5"></i>
                         <span>Dashboard</span>
                     </a>
+                    <a href="#" onclick="showTab('promocoes')" class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors relative">
+                        <i class="fas fa-tags w-5"></i>
+                        <span>Promoções</span>
+                        <span id="sidebar-pending-badge" class="ml-auto bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center hidden">0</span>
+                    </a>
                     <a href="#" onclick="showTab('postagem')" class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors">
                         <i class="fas fa-paper-plane w-5"></i>
                         <span>Postagem</span>
@@ -132,6 +137,14 @@
                         <div class="flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-lg font-medium">
                             <span class="status-dot online"></span>
                             <span>Bot Online</span>
+                        </div>
+                        
+                        <!-- Notification Bell -->
+                        <div class="relative">
+                            <button onclick="showTab('promocoes')" class="relative p-2 text-gray-600 hover:text-blue-600 transition-colors" title="Promoções Pendentes">
+                                <i class="fas fa-bell text-xl"></i>
+                                <span id="notification-badge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center hidden">0</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -202,6 +215,88 @@
                         <h3 class="text-lg font-semibold mb-4">Atividade Recente</h3>
                         <div class="space-y-3" id="recentActivity">
                             <p class="text-gray-500 text-sm">Carregando...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Promoções Pendentes Tab -->
+                <div id="tab-promocoes" class="tab-content hidden">
+                    <div class="bg-white rounded-xl shadow-md p-6">
+                        <div class="flex items-center justify-between mb-6">
+                            <div>
+                                <h3 class="text-xl font-bold text-gray-800">Promoções Pendentes</h3>
+                                <p class="text-sm text-gray-500">Promoções que precisam de aprovação manual (IA não conseguiu classificar)</p>
+                            </div>
+                            <button onclick="loadPendingPromotions()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                                <i class="fas fa-sync-alt mr-2"></i>Atualizar
+                            </button>
+                        </div>
+
+                        <!-- Empty State -->
+                        <div id="pending-empty-state" class="text-center py-12 hidden">
+                            <i class="fas fa-check-circle text-6xl text-green-300 mb-4"></i>
+                            <h4 class="text-xl font-semibold text-gray-600 mb-2">Nenhuma promoção pendente!</h4>
+                            <p class="text-gray-500">Todas as promoções foram processadas automaticamente pela IA.</p>
+                        </div>
+
+                        <!-- Pending Promotions List -->
+                        <div id="pending-promotions-list" class="space-y-4">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Edit Promotion Modal -->
+                    <div id="edit-promotion-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center">
+                        <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto m-4">
+                            <div class="p-6 border-b">
+                                <div class="flex items-center justify-between">
+                                    <h3 class="text-xl font-bold text-gray-800">Editar Promoção</h3>
+                                    <button onclick="closeEditModal()" class="text-gray-500 hover:text-gray-700">
+                                        <i class="fas fa-times text-xl"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <form id="edit-promotion-form" class="p-6 space-y-4">
+                                <input type="hidden" id="edit-promo-id">
+                                
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Nome do Produto</label>
+                                    <input type="text" id="edit-product-name" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                </div>
+                                
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Preço</label>
+                                        <input type="text" id="edit-price" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="R$ 0,00">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Cupom</label>
+                                        <input type="text" id="edit-coupon" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="CODIGO123">
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
+                                    <select id="edit-category" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                        <option value="">Selecione uma categoria...</option>
+                                    </select>
+                                    <p class="text-xs text-gray-500 mt-1">Sugestão da IA: <span id="edit-suggested-category" class="font-medium text-blue-600">-</span></p>
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Texto Processado</label>
+                                    <textarea id="edit-processed-text" rows="6" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"></textarea>
+                                </div>
+                                
+                                <div class="flex gap-3 pt-4">
+                                    <button type="button" onclick="savePromotion()" class="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+                                        <i class="fas fa-save mr-2"></i>Salvar Alterações
+                                    </button>
+                                    <button type="button" onclick="approvePromotion()" class="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium">
+                                        <i class="fas fa-check mr-2"></i>Aprovar e Enviar
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
                 </div>
@@ -1004,12 +1099,18 @@ console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detect
             
             const titles = {
                 'dashboard': 'Dashboard',
+                'promocoes': 'Promoções Pendentes',
                 'postagem': 'Postagem',
                 'configuracoes': 'Configurações',
                 'logs': 'Logs',
                 'scripts': 'Scripts'
             };
             document.getElementById('pageTitle').textContent = titles[tabName];
+            
+            // Load pending promotions when tab is opened
+            if (tabName === 'promocoes') {
+                loadPendingPromotions();
+            }
         }
 
         // Copy Script to Clipboard
@@ -1819,8 +1920,307 @@ console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detect
             }
         }
 
+        // ============================================
+        // WebSocket & Pending Promotions Functions
+        // ============================================
+        
+        let ws = null;
+        let wsReconnectAttempts = 0;
+        let categoriesCache = [];
+        
+        function initWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            console.log('[WebSocket] Connecting to:', wsUrl);
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                console.log('[WebSocket] Connected');
+                wsReconnectAttempts = 0;
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    console.log('[WebSocket] Message:', message.type);
+                    
+                    switch (message.type) {
+                        case 'pending_count_update':
+                            updatePendingBadge(message.data.count);
+                            break;
+                        case 'new_pending_promotion':
+                            showToast(`Nova promoção pendente: ${message.data.product_name || 'Produto'}`, 'info');
+                            // If on promotions tab, reload the list
+                            if (!document.getElementById('tab-promocoes').classList.contains('hidden')) {
+                                loadPendingPromotions();
+                            }
+                            break;
+                        case 'pong':
+                            // Connection alive
+                            break;
+                    }
+                } catch (err) {
+                    console.warn('[WebSocket] Message parse error:', err);
+                }
+            };
+            
+            ws.onclose = () => {
+                console.log('[WebSocket] Disconnected');
+                // Reconnect with exponential backoff
+                const delay = Math.min(1000 * Math.pow(2, wsReconnectAttempts), 30000);
+                wsReconnectAttempts++;
+                setTimeout(initWebSocket, delay);
+            };
+            
+            ws.onerror = (error) => {
+                console.warn('[WebSocket] Error:', error);
+            };
+            
+            // Send ping every 30s to keep connection alive
+            setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'ping' }));
+                }
+            }, 30000);
+        }
+        
+        function updatePendingBadge(count) {
+            const notifBadge = document.getElementById('notification-badge');
+            const sidebarBadge = document.getElementById('sidebar-pending-badge');
+            
+            if (count > 0) {
+                notifBadge.textContent = count > 99 ? '99+' : count;
+                notifBadge.classList.remove('hidden');
+                sidebarBadge.textContent = count > 99 ? '99+' : count;
+                sidebarBadge.classList.remove('hidden');
+            } else {
+                notifBadge.classList.add('hidden');
+                sidebarBadge.classList.add('hidden');
+            }
+        }
+        
+        async function loadCategoriesForSelect() {
+            try {
+                const res = await fetch('/api/categories');
+                const data = await res.json();
+                if (data.success) {
+                    categoriesCache = data.data;
+                    const select = document.getElementById('edit-category');
+                    select.innerHTML = '<option value="">Selecione uma categoria...</option>' +
+                        categoriesCache.map(cat => `<option value="${cat.name_ia}">${cat.name_ia}</option>`).join('');
+                }
+            } catch (err) {
+                console.error('Error loading categories:', err);
+            }
+        }
+        
+        async function loadPendingPromotions() {
+            try {
+                const res = await fetch('/api/pending-promotions');
+                const data = await res.json();
+                
+                const listEl = document.getElementById('pending-promotions-list');
+                const emptyEl = document.getElementById('pending-empty-state');
+                
+                if (!data.success || !data.data || data.data.length === 0) {
+                    listEl.innerHTML = '';
+                    emptyEl.classList.remove('hidden');
+                    return;
+                }
+                
+                emptyEl.classList.add('hidden');
+                
+                listEl.innerHTML = data.data.map(promo => {
+                    const sourceBadge = {
+                        'shopee': 'bg-orange-100 text-orange-800',
+                        'mercadolivre': 'bg-yellow-100 text-yellow-800',
+                        'amazon': 'bg-blue-100 text-blue-800',
+                        'aliexpress': 'bg-red-100 text-red-800',
+                        'magalu': 'bg-blue-100 text-blue-800',
+                        'telegram_monitor': 'bg-purple-100 text-purple-800',
+                        'manual': 'bg-gray-100 text-gray-800'
+                    }[promo.source] || 'bg-gray-100 text-gray-800';
+                    
+                    return `
+                    <div class="border rounded-lg p-4 hover:shadow-md transition-shadow bg-white">
+                        <div class="flex items-start gap-4">
+                            ${promo.image_path ? `<img src="${promo.image_path}" class="w-20 h-20 object-cover rounded-lg flex-shrink-0" onerror="this.style.display='none'">` : ''}
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <span class="px-2 py-1 rounded-full text-xs font-medium ${sourceBadge}">${promo.source}</span>
+                                    <span class="text-xs text-gray-500">${new Date(promo.created_at).toLocaleString('pt-BR')}</span>
+                                </div>
+                                <h4 class="font-semibold text-gray-800 truncate">${promo.product_name || 'Produto sem nome'}</h4>
+                                <div class="flex items-center gap-4 mt-1 text-sm text-gray-600">
+                                    ${promo.price ? `<span class="text-green-600 font-medium">${promo.price}</span>` : ''}
+                                    ${promo.coupon ? `<span><i class="fas fa-ticket-alt mr-1"></i>${promo.coupon}</span>` : ''}
+                                </div>
+                                ${promo.suggested_category ? `<p class="text-xs text-gray-400 mt-1">Sugestão IA: ${promo.suggested_category}</p>` : ''}
+                            </div>
+                            <div class="flex flex-col gap-2">
+                                <button onclick="openEditModal(${promo.id})" class="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm">
+                                    <i class="fas fa-edit mr-1"></i>Editar
+                                </button>
+                                <button onclick="quickApprove(${promo.id})" class="px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm">
+                                    <i class="fas fa-check mr-1"></i>Aprovar
+                                </button>
+                                <button onclick="rejectPromotion(${promo.id})" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm">
+                                    <i class="fas fa-times mr-1"></i>Excluir
+                                </button>
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
+                
+                // Update badge
+                updatePendingBadge(data.data.length);
+            } catch (err) {
+                console.error('Error loading pending promotions:', err);
+                showToast('Erro ao carregar promoções pendentes', 'error');
+            }
+        }
+        
+        async function openEditModal(id) {
+            try {
+                // Load categories if not cached
+                if (categoriesCache.length === 0) {
+                    await loadCategoriesForSelect();
+                }
+                
+                const res = await fetch(`/api/pending-promotions/${id}`);
+                const data = await res.json();
+                
+                if (!data.success || !data.data) {
+                    showToast('Promoção não encontrada', 'error');
+                    return;
+                }
+                
+                const promo = data.data;
+                
+                document.getElementById('edit-promo-id').value = promo.id;
+                document.getElementById('edit-product-name').value = promo.product_name || '';
+                document.getElementById('edit-price').value = promo.price || '';
+                document.getElementById('edit-coupon').value = promo.coupon || '';
+                document.getElementById('edit-category').value = promo.suggested_category || '';
+                document.getElementById('edit-processed-text').value = promo.processed_text || promo.original_text || '';
+                document.getElementById('edit-suggested-category').textContent = promo.suggested_category || 'Nenhuma sugestão';
+                
+                document.getElementById('edit-promotion-modal').classList.remove('hidden');
+            } catch (err) {
+                console.error('Error opening edit modal:', err);
+                showToast('Erro ao carregar dados da promoção', 'error');
+            }
+        }
+        
+        function closeEditModal() {
+            document.getElementById('edit-promotion-modal').classList.add('hidden');
+        }
+        
+        async function savePromotion() {
+            const id = document.getElementById('edit-promo-id').value;
+            const data = {
+                product_name: document.getElementById('edit-product-name').value,
+                price: document.getElementById('edit-price').value,
+                coupon: document.getElementById('edit-coupon').value,
+                category: document.getElementById('edit-category').value,
+                processed_text: document.getElementById('edit-processed-text').value
+            };
+            
+            try {
+                const res = await fetch(`/api/pending-promotions/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                if (res.ok) {
+                    showToast('Promoção atualizada com sucesso!', 'success');
+                    loadPendingPromotions();
+                } else {
+                    showToast('Erro ao atualizar promoção', 'error');
+                }
+            } catch (err) {
+                console.error('Error saving promotion:', err);
+                showToast('Erro ao salvar', 'error');
+            }
+        }
+        
+        async function approvePromotion() {
+            const id = document.getElementById('edit-promo-id').value;
+            const category = document.getElementById('edit-category').value;
+            
+            if (!category) {
+                showToast('Selecione uma categoria antes de aprovar', 'error');
+                return;
+            }
+            
+            try {
+                // First save any changes
+                await savePromotion();
+                
+                const res = await fetch(`/api/pending-promotions/${id}/approve`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category })
+                });
+                
+                const data = await res.json();
+                
+                if (res.ok && data.success) {
+                    showToast('Promoção aprovada e enviada!', 'success');
+                    closeEditModal();
+                    loadPendingPromotions();
+                } else {
+                    showToast(data.error || 'Erro ao aprovar promoção', 'error');
+                }
+            } catch (err) {
+                console.error('Error approving promotion:', err);
+                showToast('Erro ao aprovar', 'error');
+            }
+        }
+        
+        async function quickApprove(id) {
+            // Open modal for category selection
+            await openEditModal(id);
+            // Or implement a quick dropdown? For now just open the modal.
+        }
+        
+        async function rejectPromotion(id) {
+            if (!confirm('Tem certeza que deseja excluir esta promoção?')) return;
+            
+            try {
+                const res = await fetch(`/api/pending-promotions/${id}/reject`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: 'Excluída manualmente' })
+                });
+                
+                if (res.ok) {
+                    showToast('Promoção excluída', 'success');
+                    loadPendingPromotions();
+                } else {
+                    showToast('Erro ao excluir promoção', 'error');
+                }
+            } catch (err) {
+                console.error('Error rejecting promotion:', err);
+                showToast('Erro ao excluir', 'error');
+            }
+        }
+
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
+            // Initialize WebSocket
+            initWebSocket();
+            
+            // Load initial pending count
+            fetch('/api/pending-promotions/count')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) updatePendingBadge(data.count);
+                })
+                .catch(err => console.warn('Error loading pending count:', err));
+            
             loadMetrics();
             loadCharts();
             loadCategories();
