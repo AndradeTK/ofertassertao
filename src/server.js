@@ -19,6 +19,7 @@ const { handlePromotionFlow, initializePromotionFlow } = require('./services/pro
 const { startScheduledPostsProcessor } = require('./services/scheduledPostsService');
 const { globalRateLimiter } = require('./services/rateLimiter');
 const UserMonitor = require('./services/userMonitorService');
+const CookieService = require('./services/cookieService');
 const { checkAllAPIs } = require('./services/apiMonitor');
 const { createComponentLogger } = require('./config/logger');
 
@@ -493,6 +494,93 @@ app.get('/api/user-monitor/dialogs', async (req, res) => {
     try {
         const dialogs = await UserMonitor.getDialogs();
         res.json(dialogs);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ============================================
+// Cookie Capture API Routes
+// ============================================
+
+// Get cookie status
+app.get('/api/cookies/status', async (req, res) => {
+    try {
+        const status = CookieService.getStatus();
+        res.json(status);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Open browser for Mercado Livre login
+app.post('/api/cookies/ml/start', async (req, res) => {
+    try {
+        const result = await CookieService.startMercadoLivreLogin();
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Capture Mercado Livre cookies (after login)
+app.post('/api/cookies/ml/capture', async (req, res) => {
+    try {
+        const result = await CookieService.captureMercadoLivreCookies();
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Open browser for Amazon login
+app.post('/api/cookies/amazon/start', async (req, res) => {
+    try {
+        const result = await CookieService.startAmazonLogin();
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Capture Amazon cookies (after login)
+app.post('/api/cookies/amazon/capture', async (req, res) => {
+    try {
+        const result = await CookieService.captureAmazonCookies();
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Cancel/close browser
+app.post('/api/cookies/cancel', async (req, res) => {
+    try {
+        const { platform } = req.body;
+        const result = await CookieService.cancelLogin(platform || 'all');
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Clear cookies
+app.post('/api/cookies/clear', async (req, res) => {
+    try {
+        const { platform } = req.body;
+        const result = CookieService.clearCookies(platform || 'all');
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Set cookies manually
+app.post('/api/cookies/set', async (req, res) => {
+    try {
+        const { platform, cookies } = req.body;
+        const result = CookieService.setManualCookies(platform, cookies);
+        res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -1143,11 +1231,36 @@ if (bot) {
 
 // Launch
 const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   
   // Start scheduled posts processor
   startScheduledPostsProcessor();
+  
+  // Auto-start user monitoring if session exists
+  try {
+    const apiId = process.env.TELEGRAM_API_ID;
+    const apiHash = process.env.TELEGRAM_API_HASH;
+    
+    if (apiId && apiHash) {
+      console.log('[UserMonitor] Tentando conectar automaticamente...');
+      const connectResult = await UserMonitor.connectWithSession(apiId, apiHash);
+      
+      if (connectResult.success) {
+        console.log(`[UserMonitor] ✅ Conectado automaticamente como ${connectResult.user?.firstName || 'usuário'}`);
+        
+        // Auto-start monitoring
+        const monitorResult = await UserMonitor.startMonitoring();
+        console.log(`[UserMonitor] ✅ ${monitorResult.message}`);
+      } else {
+        console.log('[UserMonitor] ⚠️ Sessão não encontrada ou expirada. Faça login pelo painel.');
+      }
+    } else {
+      console.log('[UserMonitor] ⚠️ API_ID/API_HASH não configurados. Configure nas settings.');
+    }
+  } catch (err) {
+    console.error('[UserMonitor] ❌ Erro ao iniciar monitoramento automático:', err.message);
+  }
 });
 
 if (bot) {

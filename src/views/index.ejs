@@ -635,6 +635,73 @@
                                     </div>
                                     <p class="text-xs text-blue-600 mt-3"><i class="fas fa-info-circle"></i> Desativando uma plataforma, os links dessa loja não serão convertidos para afiliados.</p>
                                 </div>
+
+                                <!-- Auto Cookie Capture -->
+                                <div class="mt-6 p-4 bg-green-50 rounded-lg border border-green-200">
+                                    <h5 class="font-semibold text-green-800 mb-4 flex items-center gap-2">
+                                        <i class="fas fa-cookie-bite text-green-600"></i> Captura Automática de Cookies
+                                    </h5>
+                                    <p class="text-xs text-green-700 mb-4">
+                                        <i class="fas fa-info-circle"></i> 
+                                        Clique em "Capturar" para abrir o navegador, faça login na plataforma, e depois clique em "Confirmar Captura".
+                                        Os cookies serão salvos automaticamente para gerar links curtos (amzn.to, mercadolivre.com/sec/xxx).
+                                    </p>
+                                    
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <!-- Mercado Livre Cookies -->
+                                        <div class="p-4 bg-white rounded-lg border border-gray-200">
+                                            <div class="flex items-center justify-between mb-3">
+                                                <h6 class="font-bold text-yellow-600 flex items-center gap-2">
+                                                    <i class="fas fa-handshake"></i> Mercado Livre
+                                                </h6>
+                                                <span id="mlCookieStatus" class="px-2 py-1 text-xs rounded-full bg-gray-200 text-gray-600">
+                                                    Verificando...
+                                                </span>
+                                            </div>
+                                            <p id="mlCookieDate" class="text-xs text-gray-500 mb-3"></p>
+                                            <div class="flex gap-2">
+                                                <button onclick="openBrowser('ml')" id="btnMlOpen" class="flex-1 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-colors">
+                                                    <i class="fas fa-external-link-alt mr-1"></i> Abrir
+                                                </button>
+                                                <button onclick="captureCookies('ml')" id="btnMlCapture" class="flex-1 px-3 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-semibold rounded-lg transition-colors">
+                                                    <i class="fas fa-check mr-1"></i> Capturar
+                                                </button>
+                                                <button onclick="clearCookies('mercadolivre')" class="px-3 py-2 bg-red-100 hover:bg-red-200 text-red-600 text-sm font-semibold rounded-lg transition-colors">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Amazon Cookies -->
+                                        <div class="p-4 bg-white rounded-lg border border-gray-200">
+                                            <div class="flex items-center justify-between mb-3">
+                                                <h6 class="font-bold text-yellow-600 flex items-center gap-2">
+                                                    <i class="fab fa-amazon"></i> Amazon
+                                                </h6>
+                                                <span id="amazonCookieStatus" class="px-2 py-1 text-xs rounded-full bg-gray-200 text-gray-600">
+                                                    Verificando...
+                                                </span>
+                                            </div>
+                                            <p id="amazonCookieDate" class="text-xs text-gray-500 mb-3"></p>
+                                            <div class="flex gap-2">
+                                                <button onclick="openBrowser('amazon')" id="btnAmazonOpen" class="flex-1 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-colors">
+                                                    <i class="fas fa-external-link-alt mr-1"></i> Abrir
+                                                </button>
+                                                <button onclick="captureCookies('amazon')" id="btnAmazonCapture" class="flex-1 px-3 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-semibold rounded-lg transition-colors">
+                                                    <i class="fas fa-check mr-1"></i> Capturar
+                                                </button>
+                                                <button onclick="clearCookies('amazon')" class="px-3 py-2 bg-red-100 hover:bg-red-200 text-red-600 text-sm font-semibold rounded-lg transition-colors">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <p class="text-xs text-gray-500 mt-3 text-center">
+                                        <i class="fas fa-info-circle mr-1"></i>
+                                        Clique em "Abrir" → Faça login no site → Clique em "Capturar"
+                                    </p>
+                                </div>
                             </div>
 
                             <!-- Visual Identity -->
@@ -1129,6 +1196,124 @@ console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detect
                     await checkUserMonitorStatus();
                 } else {
                     showToast(result.error || 'Erro ao desconectar', 'error');
+                }
+            } catch (err) {
+                showToast('Erro: ' + err.message, 'error');
+            }
+        }
+
+        // ============================================
+        // Cookie Capture Functions
+        // ============================================
+        
+        async function checkCookieStatus() {
+            try {
+                const response = await fetch('/api/cookies/status');
+                const status = await response.json();
+                
+                // Mercado Livre
+                const mlStatus = document.getElementById('mlCookieStatus');
+                const mlDate = document.getElementById('mlCookieDate');
+                if (status.mercadolivre.hasCookies) {
+                    mlStatus.textContent = 'Configurado';
+                    mlStatus.className = 'px-2 py-1 text-xs rounded-full bg-green-100 text-green-700';
+                    mlDate.textContent = status.mercadolivre.lastUpdated 
+                        ? `Atualizado: ${new Date(status.mercadolivre.lastUpdated).toLocaleString('pt-BR')}`
+                        : '';
+                } else {
+                    mlStatus.textContent = 'Não configurado';
+                    mlStatus.className = 'px-2 py-1 text-xs rounded-full bg-red-100 text-red-600';
+                    mlDate.textContent = '';
+                }
+                
+                // Amazon
+                const amazonStatus = document.getElementById('amazonCookieStatus');
+                const amazonDate = document.getElementById('amazonCookieDate');
+                if (status.amazon.hasCookies) {
+                    amazonStatus.textContent = 'Configurado';
+                    amazonStatus.className = 'px-2 py-1 text-xs rounded-full bg-green-100 text-green-700';
+                    amazonDate.textContent = status.amazon.lastUpdated 
+                        ? `Atualizado: ${new Date(status.amazon.lastUpdated).toLocaleString('pt-BR')}`
+                        : '';
+                } else {
+                    amazonStatus.textContent = 'Não configurado';
+                    amazonStatus.className = 'px-2 py-1 text-xs rounded-full bg-red-100 text-red-600';
+                    amazonDate.textContent = '';
+                }
+            } catch (err) {
+                console.error('Erro ao verificar cookies:', err);
+            }
+        }
+        
+        // Open browser for login
+        async function openBrowser(platform) {
+            const btn = platform === 'ml' ? document.getElementById('btnMlOpen') : document.getElementById('btnAmazonOpen');
+            const originalText = btn.innerHTML;
+            
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Abrindo...';
+                
+                const endpoint = platform === 'ml' ? '/api/cookies/ml/start' : '/api/cookies/amazon/start';
+                const response = await fetch(endpoint, { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast(result.message, 'info');
+                } else {
+                    showToast(result.error || 'Erro ao abrir navegador', 'error');
+                }
+            } catch (err) {
+                showToast('Erro: ' + err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+        
+        // Capture cookies after login
+        async function captureCookies(platform) {
+            const btn = platform === 'ml' ? document.getElementById('btnMlCapture') : document.getElementById('btnAmazonCapture');
+            const originalText = btn.innerHTML;
+            
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Capturando...';
+                
+                const endpoint = platform === 'ml' ? '/api/cookies/ml/capture' : '/api/cookies/amazon/capture';
+                const response = await fetch(endpoint, { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast(result.message, 'success');
+                    await checkCookieStatus();
+                } else {
+                    showToast(result.error || 'Erro ao capturar cookies', 'error');
+                }
+            } catch (err) {
+                showToast('Erro: ' + err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+        
+        async function clearCookies(platform) {
+            if (!confirm(`Tem certeza que deseja remover os cookies do ${platform}?`)) return;
+            
+            try {
+                const response = await fetch('/api/cookies/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ platform })
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast(result.message, 'success');
+                    await checkCookieStatus();
+                } else {
+                    showToast(result.error || 'Erro ao remover cookies', 'error');
                 }
             } catch (err) {
                 showToast('Erro: ' + err.message, 'error');
@@ -1647,6 +1832,7 @@ console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detect
             loadForbiddenWords();
             loadSettings(); // Load SaaS settings
             checkUserMonitorStatus(); // Check user monitor status
+            checkCookieStatus(); // Check cookie capture status
             
             // Refresh metrics every 30s
             setInterval(() => {

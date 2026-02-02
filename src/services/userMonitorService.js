@@ -7,14 +7,20 @@
 const { TelegramClient, Api } = require('telegram');
 const { StringSession } = require('telegram/sessions');
 const { NewMessage } = require('telegram/events');
+const { Raw } = require('telegram/events');
 const input = require('input');
 const fs = require('fs');
 const path = require('path');
 const { createComponentLogger } = require('../config/logger');
 const Monitoring = require('../models/monitoringModel');
+const Config = require('../models/configModel');
 const { handlePromotionFlow } = require('./promotionFlow');
+const os = require('os');
 
 const logger = createComponentLogger('UserMonitor');
+
+// Destination chat ID (to exclude from monitoring)
+let destinationChatId = null;
 
 // Session file path
 const SESSION_FILE = path.join(__dirname, '../../data/user_session.txt');
@@ -24,6 +30,84 @@ const DATA_DIR = path.join(__dirname, '../../data');
 let client = null;
 let isConnected = false;
 let isMonitoring = false;
+
+// Cache of monitored IDs for fast lookup (refreshed periodically)
+let monitoredIdsCache = new Set();
+let lastCacheRefresh = 0;
+const CACHE_TTL = 60000; // Refresh cache every 60 seconds
+
+// Track last message ID per channel for polling
+let lastMessageIds = new Map();
+let pollingInterval = null;
+const POLLING_INTERVAL = 10000; // Check for new messages every 10 seconds
+
+// Queue for processing promotions with delay
+let promotionQueue = [];
+let isProcessingQueue = false;
+const PROMOTION_DELAY = 10000; // 10 seconds between each promotion
+
+/**
+ * Check if a URL is from an affiliate store (not Telegram, blogs, etc)
+ */
+function isAffiliateStoreUrl(url) {
+    const urlLower = url.toLowerCase();
+    
+    // URLs to EXCLUDE (not stores)
+    const excludePatterns = [
+        /t\.me\//i,                    // Telegram
+        /telegram\.(me|org)/i,
+        /wa\.me\//i,                   // WhatsApp
+        /whatsapp\.com/i,
+        /discord\.(gg|com)/i,
+        /youtube\.com/i,
+        /youtu\.be/i,
+        /instagram\.com/i,
+        /facebook\.com/i,
+        /twitter\.com/i,
+        /x\.com/i,
+        /tiktok\.com/i,
+        /tecnan\.com/i,                // Reference sites
+        /pelando\.com/i,
+        /promobit\.com/i,
+        /hardmob\.com/i,
+        /gatry\.com/i,
+        /ofertasertao/i,               // Our own
+        /_bot$/i,                      // Bots
+        /\/coin-index\//i,             // AliExpress coin pages
+    ];
+    
+    // URLs to INCLUDE (affiliate stores)
+    const includePatterns = [
+        /shopee\.com/i,
+        /mercadolivre\.com/i,
+        /mercadolibre\.com/i,
+        /amazon\.com/i,
+        /amzn\.to/i,
+        /aliexpress\.com/i,
+        /s\.click\.aliexpress/i,
+        /magazineluiza\.com/i,
+        /magalu\.com/i,
+        /casasbahia\.com/i,
+        /americanas\.com/i,
+        /submarino\.com/i,
+        /kabum\.com/i,
+        /pichau\.com/i,
+        /terabyte\.com/i,
+    ];
+    
+    // Check if it's an affiliate store
+    for (const pattern of includePatterns) {
+        if (pattern.test(urlLower)) return true;
+    }
+    
+    // Check if it should be excluded
+    for (const pattern of excludePatterns) {
+        if (pattern.test(urlLower)) return false;
+    }
+    
+    // Default: assume it might be a store
+    return true;
+}
 
 // Store pending login state
 let pendingLogin = {
@@ -96,7 +180,11 @@ async function initClient(apiId, apiHash) {
     client = new TelegramClient(stringSession, parseInt(apiId), apiHash, {
         connectionRetries: 5,
         useWSS: true,
+        baseLogger: logger,
     });
+
+    // Enable catching up on missed messages
+    client.floodSleepThreshold = 60;
 
     logger.info('Telegram client initialized');
     return client;
@@ -219,6 +307,14 @@ async function connectWithSession(apiId, apiHash) {
 
         await client.connect();
         
+        // Force catch up on missed updates
+        try {
+            await client.catchUp();
+            logger.info('Caught up on missed updates');
+        } catch (e) {
+            logger.warn('Could not catch up:', e.message);
+        }
+        
         // Check if session is still valid
         const me = await client.getMe();
         
@@ -282,6 +378,324 @@ async function logout() {
 }
 
 /**
+ * Refresh the monitored IDs cache
+ */
+async function refreshMonitoredIdsCache() {
+    try {
+        monitoredIdsCache = await Monitoring.getAllMonitoredIds();
+        lastCacheRefresh = Date.now();
+        console.log(`[UserMonitor] 🔄 Cache atualizado: ${monitoredIdsCache.size} IDs monitorados`);
+        // Debug: show all IDs in cache
+        console.log(`[UserMonitor] 📋 IDs no cache:`, Array.from(monitoredIdsCache).slice(0, 20));
+        return monitoredIdsCache;
+    } catch (err) {
+        console.error('[UserMonitor] Erro ao atualizar cache:', err.message);
+        return monitoredIdsCache; // Return old cache on error
+    }
+}
+
+/**
+ * Check if an ID is monitored (using cache)
+ */
+async function isIdMonitored(rawChatId) {
+    // Refresh cache if stale
+    if (Date.now() - lastCacheRefresh > CACHE_TTL) {
+        await refreshMonitoredIdsCache();
+    }
+    
+    const idStr = String(rawChatId);
+    
+    // Generate all possible formats from the raw ID
+    // Raw ID from GramJS is usually just the number (e.g., "3537007460")
+    // Database may have it as "-1003537007460" or "3537007460" or "-3537007460"
+    const possibleFormats = [
+        idStr,                          // 3537007460
+        `-${idStr}`,                    // -3537007460
+        `-100${idStr}`,                 // -1003537007460
+        `100${idStr}`,                  // 1003537007460
+    ];
+    
+    // Also handle if the ID already has a prefix
+    const numericOnly = idStr.replace(/^-100/, '').replace(/^-/, '').replace(/^100/, '');
+    if (numericOnly !== idStr) {
+        possibleFormats.push(numericOnly);
+        possibleFormats.push(`-${numericOnly}`);
+        possibleFormats.push(`-100${numericOnly}`);
+    }
+    
+    // Check each format
+    for (const format of possibleFormats) {
+        if (monitoredIdsCache.has(format)) {
+            console.log(`[UserMonitor] ✅ Match encontrado: ${format}`);
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * Download photo from message and return local file path
+ */
+async function downloadMessagePhoto(message) {
+    try {
+        if (!message.media || !message.media.photo) {
+            return null;
+        }
+        
+        console.log(`[UserMonitor] 📷 Baixando imagem...`);
+        
+        // Download to temp file
+        const tempPath = path.join(os.tmpdir(), `tg_photo_${Date.now()}.jpg`);
+        await client.downloadMedia(message.media, {
+            outputFile: tempPath
+        });
+        
+        console.log(`[UserMonitor] ✅ Imagem baixada: ${tempPath}`);
+        return tempPath;
+    } catch (err) {
+        console.error(`[UserMonitor] ❌ Erro ao baixar imagem: ${err.message}`);
+        return null;
+    }
+}
+
+/**
+ * Check if chat ID is the destination chat (should be excluded from monitoring)
+ */
+function isDestinationChat(chatId) {
+    if (!destinationChatId) return false;
+    
+    const destStr = String(destinationChatId).replace(/^-100/, '').replace(/^-/, '');
+    const chatStr = String(chatId).replace(/^-100/, '').replace(/^-/, '');
+    
+    return destStr === chatStr;
+}
+
+/**
+ * Add promotion to queue for delayed processing
+ */
+function enqueuePromotion(text, photoSource, source = 'unknown') {
+    promotionQueue.push({ text, photoSource, source, addedAt: Date.now() });
+    console.log(`[Queue] ➕ Promoção adicionada à fila (${promotionQueue.length} na fila) - Fonte: ${source}`);
+    
+    // Start processing if not already running
+    if (!isProcessingQueue) {
+        processPromotionQueue();
+    }
+}
+
+/**
+ * Process promotion queue with delay between each
+ */
+async function processPromotionQueue() {
+    if (isProcessingQueue || promotionQueue.length === 0) return;
+    
+    isProcessingQueue = true;
+    console.log(`[Queue] 🚀 Iniciando processamento da fila (${promotionQueue.length} itens)`);
+    
+    while (promotionQueue.length > 0) {
+        const item = promotionQueue.shift();
+        const waitTime = Math.floor((Date.now() - item.addedAt) / 1000);
+        
+        console.log(`[Queue] 📤 Processando promoção (aguardou ${waitTime}s na fila, restam ${promotionQueue.length})`);
+        
+        try {
+            const result = await handlePromotionFlow(item.text, null, item.photoSource);
+            if (result && result.skipped) {
+                console.log(`[Queue] ⏭️ Promoção PULADA (duplicata já processada)`);
+            } else {
+                console.log(`[Queue] ✅ Promoção ENVIADA com sucesso`);
+            }
+        } catch (err) {
+            console.error(`[Queue] ❌ Erro ao processar: ${err.message}`);
+        }
+        
+        // Clean up photo file if exists
+        if (item.photoSource && item.photoSource.source) {
+            try {
+                fs.unlinkSync(item.photoSource.source);
+            } catch (e) {
+                // Ignore cleanup errors
+            }
+        }
+        
+        // Wait before processing next item (only if there are more items)
+        if (promotionQueue.length > 0) {
+            console.log(`[Queue] ⏳ Aguardando ${PROMOTION_DELAY/1000}s antes da próxima...`);
+            await new Promise(resolve => setTimeout(resolve, PROMOTION_DELAY));
+        }
+    }
+    
+    isProcessingQueue = false;
+    console.log(`[Queue] ✅ Fila vazia, processamento finalizado`);
+}
+
+/**
+ * Poll monitored channels for new messages (for broadcast channels that don't trigger events)
+ */
+async function pollMonitoredChannels() {
+    if (!client || !isConnected) return;
+    
+    try {
+        const monitoredGroups = await Monitoring.getAll();
+        const monitoredIds = new Set(monitoredGroups.map(g => {
+            const id = g.chat_id.toString();
+            return id.replace(/^-100/, '').replace(/^-/, '');
+        }));
+        
+        // Get all dialogs to check for new messages
+        const dialogs = await client.getDialogs({ limit: 200 });
+        const channels = dialogs.filter(d => d.isChannel);
+        
+        for (const channel of channels) {
+            try {
+                const channelId = channel.id?.toString() || '';
+                const numericId = channelId.replace(/^-100/, '').replace(/^-/, '');
+                const dbIdFormat = `-100${numericId}`;
+                const isMonitored = monitoredIds.has(numericId);
+                
+                // Skip destination chat (our own group)
+                if (isDestinationChat(numericId)) {
+                    continue;
+                }
+                
+                // Get last few messages
+                const messages = await client.getMessages(channel.entity, { limit: 3 });
+                
+                if (!messages || messages.length === 0) continue;
+                
+                // Get the last processed message ID for this channel
+                const lastMsgId = lastMessageIds.get(numericId) || 0;
+                
+                // Process new messages only
+                for (const message of messages.reverse()) {
+                    if (!message || !message.id) continue;
+                    if (message.id <= lastMsgId) continue;
+                    
+                    // Update last message ID
+                    lastMessageIds.set(numericId, message.id);
+                    
+                    // Skip if no text
+                    const text = message.message || '';
+                    if (!text) continue;
+                    
+                    // Extract URLs from entities
+                    const extractedUrls = [];
+                    if (message.entities && message.entities.length > 0) {
+                        for (const ent of message.entities) {
+                            if (ent.className === 'MessageEntityTextUrl' && ent.url) {
+                                extractedUrls.push(ent.url);
+                            }
+                            if (ent.className === 'MessageEntityUrl') {
+                                const url = text.substring(ent.offset, ent.offset + ent.length);
+                                if (url) extractedUrls.push(url);
+                            }
+                        }
+                    }
+                    
+                    // Check reply markup for button URLs
+                    if (message.replyMarkup && message.replyMarkup.rows) {
+                        for (const row of message.replyMarkup.rows) {
+                            if (row.buttons) {
+                                for (const button of row.buttons) {
+                                    if (button.url) extractedUrls.push(button.url);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Filter URLs to keep only affiliate store links
+                    const filteredUrls = extractedUrls.filter(url => isAffiliateStoreUrl(url));
+                    const textUrls = (text.match(/(https?:\/\/[^\s]+)/g) || []).filter(url => isAffiliateStoreUrl(url));
+                    
+                    const hasUrlInText = textUrls.length > 0;
+                    const hasUrlInEntities = filteredUrls.length > 0;
+                    
+                    // Always log the message with channel info (for adding to DB)
+                    const preview = text.substring(0, 80).replace(/\n/g, ' ');
+                    console.log(`\n${'='.repeat(60)}`);
+                    console.log(`📡 [POLLING] MENSAGEM DETECTADA`);
+                    console.log(`${'='.repeat(60)}`);
+                    console.log(`📌 Canal: ${channel.title}`);
+                    console.log(`🆔 ID (raw): ${numericId}`);
+                    console.log(`🆔 ID (para DB): ${dbIdFormat}`);
+                    console.log(`📋 Monitorado: ${isMonitored ? '✅ SIM' : '❌ NÃO - Adicione no painel!'}`);
+                    console.log(`📝 Mensagem: ${preview}${text.length > 80 ? '...' : ''}`);
+                    if (hasUrlInText || hasUrlInEntities) {
+                        console.log(`🔗 URLs: ${hasUrlInText ? 'texto' : ''} ${hasUrlInEntities ? `+ ${extractedUrls.length} entidades` : ''}`);
+                    }
+                    console.log(`${'='.repeat(60)}\n`);
+                    
+                    // Only process if monitored and has URL
+                    if (!isMonitored) {
+                        console.log(`[POLLING] ⚠️ Canal não monitorado. Adicione ${dbIdFormat} no painel para processar.`);
+                        continue;
+                    }
+                    
+                    if (!hasUrlInText && !hasUrlInEntities) {
+                        console.log(`[POLLING] ⏭️ Sem URL, ignorando`);
+                        continue;
+                    }
+                    
+                    // Process the message - use only filtered URLs
+                    let processText = text;
+                    if (!hasUrlInText && hasUrlInEntities) {
+                        processText = text + '\n' + filteredUrls.join('\n');
+                    }
+                    
+                    // Download image if present
+                    let photoPath = null;
+                    if (message.media && message.media.photo) {
+                        photoPath = await downloadMessagePhoto(message);
+                    }
+                    
+                    console.log(`[POLLING] ➕ Adicionando à fila...${photoPath ? ' (com imagem)' : ''}`);
+                    
+                    // Pass photo path with { source: path } format for Telegraf
+                    const photoSource = photoPath ? { source: photoPath } : null;
+                    enqueuePromotion(processText, photoSource, `POLLING: ${channel.title}`);
+                    // Note: Photo cleanup is handled by the queue processor
+                }
+            } catch (err) {
+                // Silently ignore errors for individual channels
+                if (!err.message.includes('Could not find') && !err.message.includes('CHANNEL_PRIVATE')) {
+                    console.error(`[POLLING] Erro ao verificar canal: ${err.message}`);
+                }
+            }
+        }
+    } catch (err) {
+        console.error(`[POLLING] Erro geral: ${err.message}`);
+    }
+}
+
+/**
+ * Start polling interval
+ */
+function startPolling() {
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+    }
+    
+    console.log(`[UserMonitor] 🔄 Iniciando polling a cada ${POLLING_INTERVAL/1000}s para canais broadcast...`);
+    
+    // Run immediately once
+    pollMonitoredChannels();
+    
+    // Then run periodically
+    pollingInterval = setInterval(pollMonitoredChannels, POLLING_INTERVAL);
+}
+
+/**
+ * Stop polling
+ */
+function stopPolling() {
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+    }
+}
+
+/**
  * Start monitoring groups
  */
 async function startMonitoring() {
@@ -294,47 +708,337 @@ async function startMonitoring() {
     }
 
     try {
-        logger.info(`Starting monitoring for all groups in database`);
-        console.log(`[UserMonitor] 📡 Iniciando monitoramento de todos os grupos cadastrados`);
+        // Load destination chat ID to exclude it from monitoring
+        destinationChatId = await Config.getGroupChatId() || process.env.GROUP_CHAT_ID;
+        if (destinationChatId) {
+            console.log(`[UserMonitor] 🚫 Chat de destino (será ignorado): ${destinationChatId}`);
+        }
+        
+        // Load all monitored groups from DB at startup
+        const monitoredGroups = await Monitoring.getAll();
+        await refreshMonitoredIdsCache();
+        
+        logger.info(`Starting monitoring for ${monitoredGroups.length} groups from database`);
+        console.log(`[UserMonitor] 📡 Iniciando monitoramento de ${monitoredGroups.length} grupos cadastrados`);
+        
+        // Log all monitored group IDs for debugging
+        for (const group of monitoredGroups) {
+            console.log(`[UserMonitor] 📌 Grupo cadastrado: ID="${group.chat_id}" Nome="${group.name}"`);
+        }
 
-        // Add message handler
+        // IMPORTANT: Load dialogs to ensure we receive updates from private channels
+        console.log(`[UserMonitor] 🔄 Carregando diálogos para ativar canais privados...`);
+        try {
+            const dialogs = await client.getDialogs({ limit: 500 });
+            const channels = dialogs.filter(d => d.isChannel);
+            const groups = dialogs.filter(d => d.isGroup);
+            console.log(`[UserMonitor] ✅ Diálogos carregados: ${channels.length} canais, ${groups.length} grupos`);
+            
+            // Log ALL channels for reference
+            console.log(`[UserMonitor] 📺 Lista de TODOS os canais:`);
+            for (const channel of channels) {
+                const channelId = channel.id?.toString() || 'unknown';
+                // Remove -100 prefix if present for raw ID
+                const rawId = channelId.replace(/^-100/, '');
+                console.log(`[UserMonitor]    📺 "${channel.title}" | Raw: ${rawId} | Full: ${channelId}`);
+            }
+            
+            // Force "read" dialogs to ensure we receive updates
+            console.log(`[UserMonitor] 🔔 Forçando inscrição em canais para receber updates...`);
+            for (const dialog of dialogs) {
+                try {
+                    // Mark dialog as "read" to ensure we receive updates
+                    if (dialog.entity && (dialog.isChannel || dialog.isGroup)) {
+                        await client.invoke(new Api.messages.GetHistory({
+                            peer: dialog.entity,
+                            limit: 1
+                        }));
+                    }
+                } catch (e) {
+                    // Ignore errors
+                }
+            }
+            console.log(`[UserMonitor] ✅ Inscrição forçada em ${dialogs.length} diálogos`);
+        } catch (dialogErr) {
+            console.error(`[UserMonitor] ⚠️ Erro ao carregar diálogos: ${dialogErr.message}`);
+        }
+
+        // Add RAW update handler to catch ALL updates (for debugging)
+        client.addEventHandler(async (update) => {
+            // Log raw update type for debugging
+            if (update.className) {
+                const updateType = update.className;
+                // Only log channel/chat related updates
+                if (updateType.includes('Message') || updateType.includes('Channel') || updateType.includes('Chat')) {
+                    console.log(`[UserMonitor] 🔔 RAW Update: ${updateType}`);
+                }
+                
+                // Handle UpdateNewChannelMessage specifically for private channels
+                if (updateType === 'UpdateNewChannelMessage' && update.message) {
+                    console.log(`[UserMonitor] 📺 UpdateNewChannelMessage detectado!`);
+                    await processRawMessage(update.message);
+                }
+                
+                // Also handle UpdateNewMessage for groups
+                if (updateType === 'UpdateNewMessage' && update.message) {
+                    console.log(`[UserMonitor] 💬 UpdateNewMessage detectado!`);
+                    await processRawMessage(update.message);
+                }
+            }
+        }, new Raw({}));
+        
+        // Helper function to process raw messages
+        async function processRawMessage(message) {
+            try {
+                if (!message.peerId) return;
+                
+                // Get chat ID
+                let rawChatId = null;
+                let chatType = 'unknown';
+                
+                if (message.peerId.channelId) {
+                    chatType = 'channel';
+                    rawChatId = message.peerId.channelId.value 
+                        ? message.peerId.channelId.value.toString() 
+                        : message.peerId.channelId.toString();
+                } else if (message.peerId.chatId) {
+                    chatType = 'group';
+                    rawChatId = message.peerId.chatId.value 
+                        ? message.peerId.chatId.value.toString() 
+                        : message.peerId.chatId.toString();
+                } else if (message.peerId.userId) {
+                    return; // Ignore private
+                }
+                
+                if (!rawChatId) return;
+                
+                // Skip destination chat (our own group)
+                if (isDestinationChat(rawChatId)) {
+                    return;
+                }
+                
+                const dbIdFormat = `-100${rawChatId}`;
+                const text = message.message || '';
+                const msgPreview = (text || '[sem texto]').substring(0, 80).replace(/\n/g, ' ');
+                
+                console.log(`[RAW] 📨 ${chatType.toUpperCase()} | ID: ${rawChatId} | DB: ${dbIdFormat}`);
+                console.log(`[RAW] 📝 ${msgPreview}${text.length > 80 ? '...' : ''}`);
+                
+                // Check if monitored
+                const isMonitoredGroup = await isIdMonitored(rawChatId);
+                if (!isMonitoredGroup) {
+                    console.log(`[RAW] ⚠️ ID ${rawChatId} NÃO está monitorado. Adicione ${dbIdFormat} no painel.`);
+                    return;
+                }
+                
+                console.log(`[RAW] ✅ Grupo monitorado! Processando...`);
+                
+                // Extract URLs
+                const extractedUrls = [];
+                if (message.entities && message.entities.length > 0) {
+                    for (const entity of message.entities) {
+                        if (entity.className === 'MessageEntityTextUrl' && entity.url) {
+                            extractedUrls.push(entity.url);
+                        }
+                        if (entity.className === 'MessageEntityUrl') {
+                            const url = text.substring(entity.offset, entity.offset + entity.length);
+                            if (url) extractedUrls.push(url);
+                        }
+                    }
+                }
+                
+                // Check reply markup
+                if (message.replyMarkup && message.replyMarkup.rows) {
+                    for (const row of message.replyMarkup.rows) {
+                        if (row.buttons) {
+                            for (const button of row.buttons) {
+                                if (button.url) extractedUrls.push(button.url);
+                            }
+                        }
+                    }
+                }
+                
+                // Filter URLs to keep only affiliate store links
+                const filteredUrls = extractedUrls.filter(url => isAffiliateStoreUrl(url));
+                const textUrls = (text.match(/(https?:\/\/[^\s]+)/g) || []).filter(url => isAffiliateStoreUrl(url));
+                
+                const hasUrlInText = textUrls.length > 0;
+                const hasUrlInEntities = filteredUrls.length > 0;
+                
+                if (!hasUrlInText && !hasUrlInEntities) {
+                    console.log(`[RAW] ⏭️ Sem URL de loja, ignorando`);
+                    return;
+                }
+                
+                let processText = text;
+                if (!hasUrlInText && hasUrlInEntities) {
+                    processText = text + '\n' + filteredUrls.join('\n');
+                }
+                
+                // Download image if present
+                let photoPath = null;
+                if (message.media && message.media.photo) {
+                    photoPath = await downloadMessagePhoto(message);
+                }
+                
+                console.log(`[RAW] ➕ Adicionando à fila...${photoPath ? ' (com imagem)' : ''}`);
+                
+                const photoSource = photoPath ? { source: photoPath } : null;
+                enqueuePromotion(processText, photoSource, `RAW: ${chatType}`);
+                // Note: Photo cleanup is handled by the queue processor
+                
+            } catch (err) {
+                console.error(`[RAW] ❌ Erro: ${err.message}`);
+            }
+        }
+
+        // Add message handler (backup - NewMessage event)
         client.addEventHandler(async (event) => {
             try {
                 const message = event.message;
-                if (!message || !message.text) return;
-
-                // Get chat ID
-                const chatId = message.peerId?.channelId || message.peerId?.chatId;
-                if (!chatId) return;
-
-                // Format ID for comparison (add -100 prefix for supergroups/channels)
-                const formattedId = `-100${chatId}`;
                 
-                // Check in database if this chat is monitored (dynamic check)
-                const isMonitoredInDb = await Monitoring.isMonitored(formattedId) || 
-                                        await Monitoring.isMonitored(chatId.toString()) ||
-                                        await Monitoring.isMonitored(`-${chatId}`);
+                // Debug: Log EVERYTHING that arrives
+                console.log(`[UserMonitor] 📥 Evento recebido - Tipo: ${event.className || 'unknown'}`);
+                
+                if (!message) {
+                    console.log(`[UserMonitor] ⚠️ Evento sem mensagem`);
+                    return;
+                }
 
-                if (!isMonitoredInDb) return;
+                // Debug: log raw peerId to understand the structure
+                console.log(`[UserMonitor] 🔍 PeerId recebido:`, JSON.stringify(message.peerId, (key, value) =>
+                    typeof value === 'bigint' ? value.toString() : value
+                ));
+
+                // Get chat ID - handle different peer types
+                let rawChatId = null;
+                let chatType = 'unknown';
+                
+                if (message.peerId?.channelId) {
+                    chatType = 'channel';
+                    rawChatId = message.peerId.channelId.value 
+                        ? message.peerId.channelId.value.toString() 
+                        : message.peerId.channelId.toString();
+                } else if (message.peerId?.chatId) {
+                    chatType = 'group';
+                    rawChatId = message.peerId.chatId.value 
+                        ? message.peerId.chatId.value.toString() 
+                        : message.peerId.chatId.toString();
+                } else if (message.peerId?.userId) {
+                    chatType = 'private';
+                    return; // Ignore private messages
+                }
+                
+                if (!rawChatId) {
+                    console.log(`[UserMonitor] ⚠️ Não foi possível extrair ID. PeerId:`, message.peerId);
+                    return;
+                }
+                
+                // Skip destination chat (our own group)
+                if (isDestinationChat(rawChatId)) {
+                    return;
+                }
+
+                // Get chat/group name
+                let chatName = 'Desconhecido';
+                try {
+                    const chat = await message.getChat();
+                    chatName = chat?.title || chat?.firstName || 'Desconhecido';
+                } catch (e) {
+                    // Ignore error getting chat name
+                }
+
+                // Format IDs for database use
+                const dbIdFormat = `-100${rawChatId}`;
+                const msgPreview = (message.text || '[sem texto]').substring(0, 100).replace(/\n/g, ' ');
+
+                // Always log incoming messages with group info
+                console.log(`\n${'='.repeat(60)}`);
+                console.log(`📨 MENSAGEM RECEBIDA`);
+                console.log(`${'='.repeat(60)}`);
+                console.log(`📌 Grupo/Canal: ${chatName}`);
+                console.log(`📋 Tipo: ${chatType.toUpperCase()}`);
+                console.log(`🆔 ID (raw): ${rawChatId}`);
+                console.log(`🆔 ID (para DB): ${dbIdFormat}`);
+                console.log(`📝 Mensagem: ${msgPreview}${message.text?.length > 100 ? '...' : ''}`);
+                console.log(`${'='.repeat(60)}\n`);
+
+                if (!message.text) {
+                    return;
+                }
+
+                // Check if this group is monitored using cache
+                const isMonitoredGroup = await isIdMonitored(rawChatId);
+
+                if (!isMonitoredGroup) {
+                    return;
+                }
+                
+                console.log(`[UserMonitor] ✅ Grupo monitorado! Processando mensagem...`);
 
                 const text = message.text || '';
                 
-                // Check if message contains URL
-                if (!text.includes('http')) return;
-
-                logger.info(`[UserMonitor] Message with URL from ${formattedId}`);
-                console.log(`[UserMonitor] 📩 Mensagem com URL recebida de ${formattedId}`);
-
-                // Get photo if exists
-                let photoFileId = null;
-                if (message.media && message.media.photo) {
-                    // For user account, we need to download and re-upload
-                    // For now, we'll skip the photo
-                    logger.info('[UserMonitor] Message has photo (will be skipped in user monitor)');
+                // Extract URLs from message entities (buttons, text links, etc.)
+                const extractedUrls = [];
+                
+                // Check text entities for URLs
+                if (message.entities && message.entities.length > 0) {
+                    for (const entity of message.entities) {
+                        // TextUrl type contains a URL in the entity itself
+                        if (entity.className === 'MessageEntityTextUrl' && entity.url) {
+                            extractedUrls.push(entity.url);
+                        }
+                        // Regular URL in text
+                        if (entity.className === 'MessageEntityUrl') {
+                            const url = text.substring(entity.offset, entity.offset + entity.length);
+                            if (url) extractedUrls.push(url);
+                        }
+                    }
+                }
+                
+                // Check reply markup (inline buttons)
+                if (message.replyMarkup && message.replyMarkup.rows) {
+                    for (const row of message.replyMarkup.rows) {
+                        if (row.buttons) {
+                            for (const button of row.buttons) {
+                                if (button.url) {
+                                    extractedUrls.push(button.url);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Filter URLs to keep only affiliate store links
+                const filteredUrls = extractedUrls.filter(url => isAffiliateStoreUrl(url));
+                const textUrls = (text.match(/(https?:\/\/[^\s]+)/g) || []).filter(url => isAffiliateStoreUrl(url));
+                
+                const hasUrlInText = textUrls.length > 0;
+                const hasUrlInEntities = filteredUrls.length > 0;
+                
+                if (!hasUrlInText && !hasUrlInEntities) {
+                    return;
+                }
+                
+                // If URL is only in entities, append to text for processing
+                let processText = text;
+                if (!hasUrlInText && hasUrlInEntities) {
+                    processText = text + '\n' + filteredUrls.join('\n');
+                    console.log(`[UserMonitor] 🔗 URLs de lojas extraídas: ${filteredUrls.length}`);
                 }
 
-                // Process through promotion flow
-                await handlePromotionFlow(text, null, photoFileId);
+                // Download image if present
+                let photoPath = null;
+                if (message.media && message.media.photo) {
+                    photoPath = await downloadMessagePhoto(message);
+                }
+
+                console.log(`[UserMonitor] ➕ Adicionando à fila...${photoPath ? ' (com imagem)' : ''}`);
+
+                // Pass photo path with { source: path } format for Telegraf
+                const photoSource = photoPath ? { source: photoPath } : null;
+                enqueuePromotion(processText, photoSource, `NewMessage: ${chatName}`);
+                // Note: Photo cleanup is handled by the queue processor
                 
             } catch (err) {
                 logger.error(`[UserMonitor] Error processing message: ${err.message}`);
@@ -344,9 +1048,12 @@ async function startMonitoring() {
 
         isMonitoring = true;
         logger.info('Monitoring started successfully');
-        console.log('[UserMonitor] ✅ Monitoramento iniciado com sucesso');
+        console.log('[UserMonitor] ✅ Monitoramento por eventos iniciado');
+        
+        // Start polling for broadcast channels (they don't trigger events)
+        startPolling();
 
-        return { success: true, message: 'Monitoramento iniciado' };
+        return { success: true, message: `Monitoramento iniciado para ${monitoredGroups.length} grupos` };
     } catch (err) {
         logger.error('Error starting monitoring:', err.message);
         throw err;
@@ -358,6 +1065,7 @@ async function startMonitoring() {
  */
 function stopMonitoring() {
     isMonitoring = false;
+    stopPolling();
     // Note: GramJS doesn't have a removeEventHandler that's easy to use
     // The handler will still exist but we set isMonitoring to false
     logger.info('Monitoring stopped');
@@ -365,20 +1073,23 @@ function stopMonitoring() {
 }
 
 /**
- * Refresh monitored groups list
+ * Refresh monitored groups list (forces cache refresh)
  */
 async function refreshMonitoredGroups() {
-    if (!isMonitoring) {
-        return { success: false, message: 'Monitoramento não está ativo' };
-    }
-
-    // The event handler will re-check the database on each message
-    // So no action needed here, just return success
+    // Force refresh the cache
+    await refreshMonitoredIdsCache();
+    
     const monitoredGroups = await Monitoring.getAll();
+    
+    console.log(`[UserMonitor] 🔄 Lista de grupos atualizada: ${monitoredGroups.length} grupos`);
+    for (const group of monitoredGroups) {
+        console.log(`[UserMonitor] 📌 ID="${group.chat_id}" Nome="${group.name}"`);
+    }
     
     return { 
         success: true, 
-        message: `Atualizado: ${monitoredGroups.length} grupos monitorados` 
+        message: `Atualizado: ${monitoredGroups.length} grupos monitorados`,
+        groups: monitoredGroups
     };
 }
 

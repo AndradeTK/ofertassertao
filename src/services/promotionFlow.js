@@ -59,6 +59,89 @@ function initializePromotionFlow(botInstance, ConfigModel) {
     Config = ConfigModel;
 }
 
+/**
+ * Filter out unwanted URLs that are not affiliate store links
+ * Removes Telegram links, bots, blogs, and other non-store URLs
+ */
+function filterAffiliateUrls(urls) {
+    if (!urls || urls.length === 0) return [];
+    
+    // Domains/patterns to exclude (not affiliate stores)
+    const excludePatterns = [
+        /t\.me\//i,                    // Telegram links
+        /telegram\.(me|org)\//i,       // Telegram
+        /wa\.me\//i,                   // WhatsApp
+        /whatsapp\.com/i,              // WhatsApp
+        /bit\.ly\//i,                  // Generic shorteners (unless resolved)
+        /tinyurl\.com/i,               // Generic shorteners
+        /discord\.(gg|com)/i,          // Discord
+        /youtube\.com/i,               // YouTube
+        /youtu\.be/i,                  // YouTube short
+        /instagram\.com/i,             // Instagram
+        /facebook\.com/i,              // Facebook
+        /twitter\.com/i,               // Twitter
+        /x\.com/i,                     // Twitter/X
+        /tiktok\.com/i,                // TikTok
+        /tecnan\.com/i,                // Tecnan (blog/reference site)
+        /pelando\.com/i,               // Pelando (aggregator)
+        /promobit\.com/i,              // Promobit (aggregator)
+        /hardmob\.com/i,               // Hardmob (forum)
+        /gatry\.com/i,                 // Gatry (aggregator)
+        /ofertasertao/i,               // Our own group
+        /_bot$/i,                      // Bot usernames
+        /\/coin-index\//i,             // AliExpress coin pages (not product)
+    ];
+    
+    // Domains to ALWAYS include (affiliate stores)
+    const includePatterns = [
+        /shopee\.com/i,
+        /mercadolivre\.com/i,
+        /mercadolibre\.com/i,
+        /amazon\.com/i,
+        /amzn\.to/i,
+        /amzn\.com/i,
+        /aliexpress\.com/i,
+        /s\.click\.aliexpress/i,
+        /magazineluiza\.com/i,
+        /magalu\.com/i,
+        /casasbahia\.com/i,
+        /americanas\.com/i,
+        /submarino\.com/i,
+        /kabum\.com/i,
+        /pichau\.com/i,
+        /terabyte\.com/i,
+    ];
+    
+    return urls.filter(url => {
+        const urlLower = url.toLowerCase();
+        
+        // First check if it's explicitly an affiliate store
+        for (const pattern of includePatterns) {
+            if (pattern.test(urlLower)) {
+                return true; // Keep this URL
+            }
+        }
+        
+        // Then check if it should be excluded
+        for (const pattern of excludePatterns) {
+            if (pattern.test(urlLower)) {
+                console.log(`[Filter] ❌ Excluindo URL não-afiliada: ${url.substring(0, 50)}...`);
+                return false; // Exclude this URL
+            }
+        }
+        
+        // Default: keep URLs that look like they might be stores
+        // (have /item/, /product/, /dp/, /p/, etc in path)
+        if (/\/(item|product|dp|p|produto|oferta)s?\//i.test(urlLower)) {
+            return true;
+        }
+        
+        // Exclude if it doesn't look like a store URL
+        console.log(`[Filter] ⚠️ URL desconhecida, mantendo: ${url.substring(0, 50)}...`);
+        return true; // Keep by default, but log for debugging
+    });
+}
+
 async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
     // Check rate limit
     if (!globalRateLimiter.canProcess()) {
@@ -68,10 +151,21 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
     }
 
     // Extract ALL URLs from text
-    const urls = text && text.match(/(https?:\/\/[^\s]+)/g);
-    if (!urls || urls.length === 0) {
+    const allUrls = text && text.match(/(https?:\/\/[^\s]+)/g);
+    if (!allUrls || allUrls.length === 0) {
         logger.error('No URLs found in text');
         throw new Error('Nenhuma URL encontrada no texto');
+    }
+    
+    // Filter out non-affiliate URLs (Telegram, blogs, etc)
+    const urls = filterAffiliateUrls(allUrls);
+    if (urls.length === 0) {
+        logger.warn('All URLs were filtered out (non-affiliate)');
+        throw new Error('Nenhuma URL de loja afiliada encontrada (apenas links de Telegram/blogs)');
+    }
+    
+    if (urls.length < allUrls.length) {
+        console.log(`[Filter] 📊 URLs filtradas: ${allUrls.length} → ${urls.length} (removidas ${allUrls.length - urls.length} não-afiliadas)`);
     }
 
     // Check for forbidden words
@@ -93,8 +187,9 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
         try {
             // Use SETNX (SET if Not eXists) for atomic lock to prevent race conditions
             // This ensures only one processor (bot OR user account) handles this URL
+            // Expiry: 3600 seconds (1 hour) - allows reposting after 1 hour
             alreadyProcessing = await Promise.race([
-                redis.set(key, 'processing', 'EX', 86400, 'NX'), // 24h expiry, only set if not exists
+                redis.set(key, 'processing', 'EX', 3600, 'NX'), // 1h expiry, only set if not exists
                 new Promise((_, reject) => setTimeout(() => reject(new Error('Redis timeout')), 3000))
             ]);
             // SETNX returns 'OK' if key was set (meaning we got the lock), null if key exists
@@ -102,7 +197,8 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
             console.log(`[2/8] ✅ Redis check ok (got lock: ${gotLock})`);
             
             if (!gotLock) {
-                logger.info('Duplicate URL detected (already being processed), skipping');
+                logger.info(`Duplicate URL detected (already processed in last 1h), skipping: ${primaryUrl.substring(0, 50)}`);
+                console.log(`[2/8] ⚠️ URL duplicada (processada na última 1h): ${primaryUrl.substring(0, 50)}...`);
                 return { skipped: true, reason: 'duplicated' };
             }
         } catch (redisErr) {
@@ -284,7 +380,7 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
                 }
             }
             
-            messageText += `📢 Mais ofertas em: ${groupLink}`;
+            messageText += `\n📢 Mais ofertas em: \n${groupLink}`;
         }
 
         // Sanitize the caption to ensure valid UTF-8
@@ -426,15 +522,15 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
             }
         }
 
-        // Mark in Redis for 24h
+        // Mark in Redis for 1h (prevent reposting same URL within 1 hour)
         logger.info('Promotion processed successfully');
         console.log(`[✅ COMPLETO] Promoção processada com sucesso!`);
         try {
             await Promise.race([
-                redis.set(key, '1', 'EX', 24 * 60 * 60),
+                redis.set(key, '1', 'EX', 3600), // 1 hour expiry
                 new Promise((_, reject) => setTimeout(() => reject(new Error('Redis timeout')), 3000))
             ]);
-            logger.info('Marked in Redis (24h)');
+            logger.info('Marked in Redis (1h)');
         } catch (redisErr) {
             logger.warn(`Failed to mark in Redis: ${redisErr.message}`);
             console.warn(`⚠️ Falha ao marcar no Redis (continuando): ${redisErr.message}`);

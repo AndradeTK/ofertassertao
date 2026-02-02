@@ -117,28 +117,34 @@ ON DUPLICATE KEY UPDATE key_name = key_name;
 
 -- Inserir todas as categorias utilizadas pelo sistema
 -- IMPORTANTE: Os thread_ids devem ser configurados com os IDs reais dos tópicos do Telegram
-INSERT INTO categories (name_ia, thread_id) VALUES 
-    ('Smartphone', 1),           -- Thread ID para Smartphone (ajuste conforme seu Telegram)
-    ('Teclados', 1),              -- Thread ID para Teclados
-    ('Mouse e Mousepad', 1),      -- Thread ID para Mouse e Mousepad
-    ('Headset e Fone', 1),        -- Thread ID para Headset e Fone
-    ('Monitor', 1),               -- Thread ID para Monitor
-    ('Processador', 1),           -- Thread ID para Processador
-    ('Placa de Vídeo', 1),        -- Thread ID para Placa de Vídeo
-    ('Placa Mãe', 1),             -- Thread ID para Placa Mãe
-    ('Memória Ram', 1),           -- Thread ID para Memória Ram
-    ('Armazenamento', 1),         -- Thread ID para Armazenamento
-    ('Fonte', 1),                 -- Thread ID para Fonte
-    ('Gabinete', 1),              -- Thread ID para Gabinete
-    ('Refrigeração', 1),          -- Thread ID para Refrigeração
-    ('Pc e Notebook', 1),         -- Thread ID para Pc e Notebook
-    ('Consoles', 1),              -- Thread ID para Consoles
-    ('Áudio', 1),                 -- Thread ID para Áudio
-    ('Mesas', 1),                 -- Thread ID para Mesas
-    ('Acessórios', 1),            -- Thread ID para Acessórios
-    ('Eletrônicos', 1),           -- Thread ID para Eletrônicos
-    ('Cupom', 1),                 -- Thread ID para Cupons e Descontos Gerais
-    ('Variados', 1)               -- Thread ID para Variados (categoria padrão)
+INSERT INTO categories (name_ia, thread_id) VALUES
+('Acessórios', 2),
+('Áudio', 13),
+('Armazenamento', 6),
+('Cadeiras', 14),
+('Computador/Notebook', 28),
+('Consoles', 15),
+('Cupom', 16),
+('Eletrônicos', 17),
+('Fitness', 484),
+('Fonte', 18),
+('Gabinete', 19),
+('Headset/Fone', 20),
+('Higiene', 509),
+('Jogos', 21),
+('Memória RAM', 22),
+('Mesas', 24),
+('Monitores', 25),
+('Mouse', 26),
+('Outros', 516),
+('Placa de Vídeo', 49),
+('Placa Mãe', 50),
+('Processador', 51),
+('Produto de Limpeza', 514),
+('Roupa/Moda', 55),
+('Teclado', 54),
+('Telefone/Tablet', 53),
+('Televisão', 511),
 ON DUPLICATE KEY UPDATE name_ia = VALUES(name_ia);
 
 -- Mensagem de sucesso
