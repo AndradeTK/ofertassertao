@@ -351,9 +351,20 @@
                                 <h3 class="text-xl font-bold text-gray-800">Promoções Pendentes</h3>
                                 <p class="text-sm text-gray-500">Promoções que precisam de aprovação manual (IA não conseguiu classificar)</p>
                             </div>
-                            <button onclick="loadPendingPromotions()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                                <i class="fas fa-sync-alt mr-2"></i>Atualizar
-                            </button>
+                            <div class="flex gap-2 flex-wrap justify-end">
+                                <button onclick="approveAllPending()" id="btn-approve-all-pending" class="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 text-sm">
+                                    <i class="fas fa-check-double mr-1"></i>Aprovar Todos
+                                </button>
+                                <button onclick="rejectAllPending()" id="btn-reject-all-pending" class="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 text-sm">
+                                    <i class="fas fa-times-circle mr-1"></i>Recusar Todos
+                                </button>
+                                <button onclick="reanalyzeAllWithAI()" id="btn-reanalyze-ai" class="px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm">
+                                    <i class="fas fa-robot mr-1"></i>Reanalisar com IA
+                                </button>
+                                <button onclick="loadPendingPromotions()" class="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm">
+                                    <i class="fas fa-sync-alt mr-1"></i>Atualizar
+                                </button>
+                            </div>
                         </div>
 
                         <!-- Empty State -->
@@ -444,9 +455,17 @@
                                 </h3>
                                 <p class="text-sm text-gray-500">Promoções de lojas sem programa de afiliados configurado (Kabum, Pichau, etc.)</p>
                             </div>
-                            <button onclick="loadNoAffiliatePromotions()" class="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors">
-                                <i class="fas fa-sync-alt mr-2"></i>Atualizar
-                            </button>
+                            <div class="flex gap-2 flex-wrap justify-end">
+                                <button onclick="approveAllNoAffiliate()" id="btn-approve-all-noaff" class="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 text-sm">
+                                    <i class="fas fa-check-double mr-1"></i>Aprovar Todos
+                                </button>
+                                <button onclick="rejectAllNoAffiliate()" id="btn-reject-all-noaff" class="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 text-sm">
+                                    <i class="fas fa-times-circle mr-1"></i>Recusar Todos
+                                </button>
+                                <button onclick="loadNoAffiliatePromotions()" class="px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm">
+                                    <i class="fas fa-sync-alt mr-1"></i>Atualizar
+                                </button>
+                            </div>
                         </div>
 
                         <!-- Empty State -->
@@ -2341,6 +2360,181 @@ console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detect
                 suggestionsEl.classList.add('hidden');
             }
         });
+        
+        // Reanalyze all pending promotions with AI
+        async function reanalyzeAllWithAI() {
+            const btn = document.getElementById('btn-reanalyze-ai');
+            const originalContent = btn.innerHTML;
+            
+            if (!confirm('Isso vai reprocessar todas as promoções pendentes pela IA.\n\nAs promoções serão removidas da lista de pendentes e adicionadas à fila de envio.\n\nSe a IA conseguir classificar, serão enviadas automaticamente.\nSe não conseguir, voltarão para esta lista.\n\nDeseja continuar?')) {
+                return;
+            }
+            
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processando...';
+                
+                const res = await fetch('/api/pending-promotions/reanalyze-all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    showToast(`${data.count} promoções adicionadas à fila para reanálise`, 'success');
+                    loadPendingPromotions();
+                } else {
+                    showToast(data.error || 'Erro ao reanalisar promoções', 'error');
+                }
+            } catch (err) {
+                console.error('Error reanalyzing promotions:', err);
+                showToast('Erro ao reanalisar promoções', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalContent;
+            }
+        }
+        
+        // Approve all pending promotions (AI fallback)
+        async function approveAllPending() {
+            if (!confirm('Aprovar TODAS as promoções pendentes?\n\nElas serão enviadas com a categoria sugerida pela IA ou "Variados".')) {
+                return;
+            }
+            
+            const btn = document.getElementById('btn-approve-all-pending');
+            const originalContent = btn.innerHTML;
+            
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Aprovando...';
+                
+                const res = await fetch('/api/pending-promotions/approve-all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    showToast(`${data.count} promoções aprovadas e adicionadas à fila`, 'success');
+                    loadPendingPromotions();
+                } else {
+                    showToast(data.error || 'Erro ao aprovar promoções', 'error');
+                }
+            } catch (err) {
+                console.error('Error approving all:', err);
+                showToast('Erro ao aprovar promoções', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalContent;
+            }
+        }
+        
+        // Reject all pending promotions (AI fallback)
+        async function rejectAllPending() {
+            if (!confirm('Recusar TODAS as promoções pendentes?\n\nEssa ação não pode ser desfeita.')) {
+                return;
+            }
+            
+            const btn = document.getElementById('btn-reject-all-pending');
+            const originalContent = btn.innerHTML;
+            
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Recusando...';
+                
+                const res = await fetch('/api/pending-promotions/reject-all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    showToast(`${data.count} promoções recusadas`, 'success');
+                    loadPendingPromotions();
+                } else {
+                    showToast(data.error || 'Erro ao recusar promoções', 'error');
+                }
+            } catch (err) {
+                console.error('Error rejecting all:', err);
+                showToast('Erro ao recusar promoções', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalContent;
+            }
+        }
+        
+        // Approve all no-affiliate promotions
+        async function approveAllNoAffiliate() {
+            if (!confirm('Aprovar TODAS as promoções sem afiliado?\n\nElas serão enviadas com a categoria "Outros".')) {
+                return;
+            }
+            
+            const btn = document.getElementById('btn-approve-all-noaff');
+            const originalContent = btn.innerHTML;
+            
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Aprovando...';
+                
+                const res = await fetch('/api/no-affiliate-promotions/approve-all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    showToast(`${data.count} promoções aprovadas e adicionadas à fila`, 'success');
+                    loadNoAffiliatePromotions();
+                } else {
+                    showToast(data.error || 'Erro ao aprovar promoções', 'error');
+                }
+            } catch (err) {
+                console.error('Error approving all no-affiliate:', err);
+                showToast('Erro ao aprovar promoções', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalContent;
+            }
+        }
+        
+        // Reject all no-affiliate promotions
+        async function rejectAllNoAffiliate() {
+            if (!confirm('Recusar TODAS as promoções sem afiliado?\n\nEssa ação não pode ser desfeita.')) {
+                return;
+            }
+            
+            const btn = document.getElementById('btn-reject-all-noaff');
+            const originalContent = btn.innerHTML;
+            
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Recusando...';
+                
+                const res = await fetch('/api/no-affiliate-promotions/reject-all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    showToast(`${data.count} promoções recusadas`, 'success');
+                    loadNoAffiliatePromotions();
+                } else {
+                    showToast(data.error || 'Erro ao recusar promoções', 'error');
+                }
+            } catch (err) {
+                console.error('Error rejecting all no-affiliate:', err);
+                showToast('Erro ao recusar promoções', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalContent;
+            }
+        }
         
         async function loadPendingPromotions() {
             try {

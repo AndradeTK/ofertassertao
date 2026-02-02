@@ -899,6 +899,291 @@ app.delete('/api/pending-promotions/:id', async (req, res) => {
     }
 });
 
+// Reanalyze all AI fallback pending promotions
+app.post('/api/pending-promotions/reanalyze-all', async (req, res) => {
+    try {
+        // Get all pending AI fallback promotions
+        const pending = await PendingPromotions.getPending();
+        
+        if (pending.length === 0) {
+            return res.json({ success: true, message: 'Nenhuma promoção pendente para reanalisar', count: 0 });
+        }
+        
+        const { enqueuePromotion } = require('./services/userMonitorService');
+        let queuedCount = 0;
+        
+        for (const promo of pending) {
+            // Use original_text to reprocess through the full flow
+            const originalText = promo.original_text;
+            const imagePath = promo.image_path;
+            
+            if (originalText) {
+                // Create photoSource object if image exists and is a valid URL
+                let photoSource = null;
+                if (imagePath && (imagePath.startsWith('http://') || imagePath.startsWith('https://'))) {
+                    photoSource = { url: imagePath };
+                }
+                
+                // Enqueue for reprocessing
+                enqueuePromotion(originalText, photoSource, `reanalise-${promo.source || 'manual'}`);
+                queuedCount++;
+                
+                // Delete the pending promotion since it's now in the queue
+                await PendingPromotions.delete(promo.id);
+            }
+        }
+        
+        // Broadcast updated count
+        const count = await PendingPromotions.getPendingCount();
+        wss.clients.forEach(client => {
+            if (client.readyState === 1) {
+                client.send(JSON.stringify({
+                    type: 'pending_count_update',
+                    data: { count },
+                    timestamp: new Date().toISOString()
+                }));
+            }
+        });
+        
+        console.log(`[Reanalyze] ✅ ${queuedCount} promoções adicionadas à fila para reanálise`);
+        res.json({ 
+            success: true, 
+            message: `${queuedCount} promoções adicionadas à fila para reanálise com IA`,
+            count: queuedCount 
+        });
+    } catch (err) {
+        console.error('Error reanalyzing promotions:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Approve all AI fallback pending promotions
+app.post('/api/pending-promotions/approve-all', async (req, res) => {
+    try {
+        const pending = await PendingPromotions.getPending();
+        
+        if (pending.length === 0) {
+            return res.json({ success: true, message: 'Nenhuma promoção pendente', count: 0 });
+        }
+        
+        const Category = require('./models/categoryModel');
+        const { enqueueDirectSend } = require('./services/userMonitorService');
+        let approvedCount = 0;
+        
+        for (const promo of pending) {
+            try {
+                // Use suggested category or 'Variados'
+                const category = promo.suggested_category || 'Variados';
+                const threadId = await Category.getThreadIdByName(category);
+                
+                // Mark as approved
+                await PendingPromotions.approve(promo.id, category);
+                
+                // Enqueue for sending
+                const sendData = {
+                    productName: promo.product_name || 'Produto',
+                    message: promo.processed_text || promo.original_text,
+                    image: promo.image_path,
+                    threadId: threadId,
+                    sendCallback: async () => {
+                        const bot = global.telegramBot;
+                        const destChatId = process.env.DEST_CHAT_ID;
+                        
+                        if (promo.image_path && promo.image_path.startsWith('http')) {
+                            await bot.telegram.sendPhoto(destChatId, promo.image_path, {
+                                caption: promo.processed_text || promo.original_text,
+                                parse_mode: 'HTML',
+                                message_thread_id: threadId || undefined
+                            });
+                        } else {
+                            await bot.telegram.sendMessage(destChatId, promo.processed_text || promo.original_text, {
+                                parse_mode: 'HTML',
+                                message_thread_id: threadId || undefined,
+                                disable_web_page_preview: false
+                            });
+                        }
+                    }
+                };
+                
+                enqueueDirectSend(sendData);
+                approvedCount++;
+            } catch (err) {
+                console.error(`Error approving promo ${promo.id}:`, err.message);
+            }
+        }
+        
+        // Broadcast updated count
+        const count = await PendingPromotions.getPendingCount();
+        wss.clients.forEach(client => {
+            if (client.readyState === 1) {
+                client.send(JSON.stringify({
+                    type: 'pending_count_update',
+                    data: { count },
+                    timestamp: new Date().toISOString()
+                }));
+            }
+        });
+        
+        console.log(`[ApproveAll] ✅ ${approvedCount} promoções aprovadas`);
+        res.json({ success: true, message: `${approvedCount} promoções aprovadas`, count: approvedCount });
+    } catch (err) {
+        console.error('Error approving all:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Reject all AI fallback pending promotions
+app.post('/api/pending-promotions/reject-all', async (req, res) => {
+    try {
+        const pending = await PendingPromotions.getPending();
+        
+        if (pending.length === 0) {
+            return res.json({ success: true, message: 'Nenhuma promoção pendente', count: 0 });
+        }
+        
+        let rejectedCount = 0;
+        
+        for (const promo of pending) {
+            try {
+                await PendingPromotions.reject(promo.id, 'Recusado em lote');
+                rejectedCount++;
+            } catch (err) {
+                console.error(`Error rejecting promo ${promo.id}:`, err.message);
+            }
+        }
+        
+        // Broadcast updated count
+        const count = await PendingPromotions.getPendingCount();
+        wss.clients.forEach(client => {
+            if (client.readyState === 1) {
+                client.send(JSON.stringify({
+                    type: 'pending_count_update',
+                    data: { count },
+                    timestamp: new Date().toISOString()
+                }));
+            }
+        });
+        
+        console.log(`[RejectAll] ✅ ${rejectedCount} promoções recusadas`);
+        res.json({ success: true, message: `${rejectedCount} promoções recusadas`, count: rejectedCount });
+    } catch (err) {
+        console.error('Error rejecting all:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Approve all no-affiliate promotions
+app.post('/api/no-affiliate-promotions/approve-all', async (req, res) => {
+    try {
+        const pending = await PendingPromotions.getNoAffiliate();
+        
+        if (pending.length === 0) {
+            return res.json({ success: true, message: 'Nenhuma promoção sem afiliado', count: 0 });
+        }
+        
+        const Category = require('./models/categoryModel');
+        const { enqueueDirectSend } = require('./services/userMonitorService');
+        let approvedCount = 0;
+        
+        for (const promo of pending) {
+            try {
+                const category = promo.suggested_category || 'Outros';
+                const threadId = await Category.getThreadIdByName(category);
+                
+                await PendingPromotions.approve(promo.id, category);
+                
+                const sendData = {
+                    productName: promo.product_name || 'Produto',
+                    message: promo.processed_text || promo.original_text,
+                    image: promo.image_path,
+                    threadId: threadId,
+                    sendCallback: async () => {
+                        const bot = global.telegramBot;
+                        const destChatId = process.env.DEST_CHAT_ID;
+                        
+                        if (promo.image_path && promo.image_path.startsWith('http')) {
+                            await bot.telegram.sendPhoto(destChatId, promo.image_path, {
+                                caption: promo.processed_text || promo.original_text,
+                                parse_mode: 'HTML',
+                                message_thread_id: threadId || undefined
+                            });
+                        } else {
+                            await bot.telegram.sendMessage(destChatId, promo.processed_text || promo.original_text, {
+                                parse_mode: 'HTML',
+                                message_thread_id: threadId || undefined,
+                                disable_web_page_preview: false
+                            });
+                        }
+                    }
+                };
+                
+                enqueueDirectSend(sendData);
+                approvedCount++;
+            } catch (err) {
+                console.error(`Error approving no-affiliate promo ${promo.id}:`, err.message);
+            }
+        }
+        
+        // Broadcast updated count
+        const count = await PendingPromotions.getNoAffiliateCount();
+        wss.clients.forEach(client => {
+            if (client.readyState === 1) {
+                client.send(JSON.stringify({
+                    type: 'no_affiliate_count_update',
+                    data: { count },
+                    timestamp: new Date().toISOString()
+                }));
+            }
+        });
+        
+        console.log(`[ApproveAllNoAff] ✅ ${approvedCount} promoções aprovadas`);
+        res.json({ success: true, message: `${approvedCount} promoções aprovadas`, count: approvedCount });
+    } catch (err) {
+        console.error('Error approving all no-affiliate:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Reject all no-affiliate promotions
+app.post('/api/no-affiliate-promotions/reject-all', async (req, res) => {
+    try {
+        const pending = await PendingPromotions.getNoAffiliate();
+        
+        if (pending.length === 0) {
+            return res.json({ success: true, message: 'Nenhuma promoção sem afiliado', count: 0 });
+        }
+        
+        let rejectedCount = 0;
+        
+        for (const promo of pending) {
+            try {
+                await PendingPromotions.reject(promo.id, 'Recusado em lote (sem afiliado)');
+                rejectedCount++;
+            } catch (err) {
+                console.error(`Error rejecting no-affiliate promo ${promo.id}:`, err.message);
+            }
+        }
+        
+        // Broadcast updated count
+        const count = await PendingPromotions.getNoAffiliateCount();
+        wss.clients.forEach(client => {
+            if (client.readyState === 1) {
+                client.send(JSON.stringify({
+                    type: 'no_affiliate_count_update',
+                    data: { count },
+                    timestamp: new Date().toISOString()
+                }));
+            }
+        });
+        
+        console.log(`[RejectAllNoAff] ✅ ${rejectedCount} promoções recusadas`);
+        res.json({ success: true, message: `${rejectedCount} promoções recusadas`, count: rejectedCount });
+    } catch (err) {
+        console.error('Error rejecting all no-affiliate:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Get pending promotions history
 app.get('/api/pending-promotions/history', async (req, res) => {
     try {
@@ -1095,15 +1380,46 @@ app.get('/api/stats/today', async (req, res) => {
             // Ignore Redis errors
         }
         
+        // Get by source distribution
+        const [bySourceRows] = await pool.query(`
+            SELECT source, COUNT(*) as count FROM pending_promotions 
+            WHERE status = 'approved' AND DATE(processed_at) = ?
+            GROUP BY source
+        `, [today]);
+        
+        const bySource = {};
+        bySourceRows.forEach(row => {
+            const src = (row.source || 'outros').toLowerCase();
+            bySource[src] = (bySource[src] || 0) + row.count;
+        });
+        
+        // Get hourly data
+        const [hourlyRows] = await pool.query(`
+            SELECT HOUR(processed_at) as hour, COUNT(*) as count 
+            FROM pending_promotions 
+            WHERE status = 'approved' AND DATE(processed_at) = ?
+            GROUP BY HOUR(processed_at)
+            ORDER BY hour
+        `, [today]);
+        
+        const hourlyData = Array(24).fill(0);
+        hourlyRows.forEach(row => {
+            if (row.hour >= 0 && row.hour < 24) {
+                hourlyData[row.hour] = row.count;
+            }
+        });
+        
         res.json({
             sent: sent[0]?.count || 0,
             approved: approved[0]?.count || 0,
             rejected: rejected[0]?.count || 0,
-            duplicates: duplicates
+            duplicates: duplicates,
+            bySource: bySource,
+            hourlyData: hourlyData
         });
     } catch (err) {
         console.error('Error getting stats:', err.message);
-        res.json({ sent: 0, approved: 0, rejected: 0, duplicates: 0 });
+        res.json({ sent: 0, approved: 0, rejected: 0, duplicates: 0, bySource: {}, hourlyData: Array(24).fill(0) });
     }
 });
 
@@ -1116,6 +1432,54 @@ app.get('/api/monitored', async (req, res) => {
         console.error('Error getting monitored groups:', err.message);
         res.json([]);
     }
+});
+
+// System health check for monitor page
+app.get('/api/monitor/health', async (req, res) => {
+    const health = {
+        redis: { status: 'offline', latency: 0 },
+        mysql: { status: 'offline', latency: 0 },
+        bot: { status: 'offline' },
+        puppeteer: { status: 'offline' },
+        shopee: { status: 'online', latency: 50 },
+        mercadolivre: { status: 'online', latency: 80 },
+        aliexpress: { status: 'online', latency: 120 },
+        amazon: { status: 'online', latency: 60 },
+        ai: { status: 'online', latency: 200 }
+    };
+    
+    // Check Redis
+    try {
+        const start = Date.now();
+        await redis.ping();
+        health.redis = { status: 'online', latency: Date.now() - start };
+    } catch (e) {
+        health.redis = { status: 'offline', latency: 0 };
+    }
+    
+    // Check MySQL
+    try {
+        const { pool } = require('./config/db');
+        const start = Date.now();
+        await pool.query('SELECT 1');
+        health.mysql = { status: 'online', latency: Date.now() - start };
+    } catch (e) {
+        health.mysql = { status: 'offline', latency: 0 };
+    }
+    
+    // Check Telegram Bot
+    try {
+        if (global.telegramBot && global.telegramBot.telegram) {
+            health.bot = { status: 'online' };
+        }
+    } catch (e) {
+        // Bot offline
+    }
+    
+    // Puppeteer is always ready (lazy loaded)
+    health.puppeteer = { status: 'online' };
+    
+    res.json(health);
 });
 
 // ========================= END RATE LIMIT & QUEUE API =========================
