@@ -508,10 +508,21 @@ async function processPromotionQueue() {
             }
         } catch (err) {
             console.error(`[Queue] ❌ Erro ao processar: ${err.message}`);
+            
+            // Check if it's a rate limit error - if so, re-queue the item and wait
+            if (err.message && err.message.includes('Rate limit')) {
+                // Put item back at the beginning of the queue
+                promotionQueue.unshift(item);
+                console.log(`[Queue] ⏱️ Rate limit atingido! Aguardando 65s antes de retentar... (${promotionQueue.length} na fila)`);
+                
+                // Wait 65 seconds before retrying (rate limit window is 60s)
+                await new Promise(resolve => setTimeout(resolve, 65000));
+                continue; // Skip the normal delay and retry immediately
+            }
         }
         
-        // Clean up photo file if exists
-        if (item.photoSource && item.photoSource.source) {
+        // Clean up photo file if exists (only if NOT rate limited)
+        if (item.photoSource && item.photoSource.source && !promotionQueue.some(q => q.photoSource?.source === item.photoSource.source)) {
             try {
                 fs.unlinkSync(item.photoSource.source);
             } catch (e) {

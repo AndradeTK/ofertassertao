@@ -4,6 +4,7 @@ const redis = require('../config/redis');
 const Category = require('../models/categoryModel');
 const ForbiddenWords = require('../models/forbiddenWordsModel');
 const PendingPromotions = require('../models/pendingPromotionsModel');
+const ExcludedUrls = require('../models/excludedUrlsModel');
 const { classifyAndCaption } = require('./aiService');
 const { generateAffiliateLink } = require('./affiliateService');
 const { fetchMetadata } = require('./metaService');
@@ -84,35 +85,39 @@ function broadcastToClients(eventType, data) {
 /**
  * Filter out unwanted URLs that are not affiliate store links
  * Removes Telegram links, bots, blogs, and other non-store URLs
+ * Also checks database for custom excluded patterns
  */
-function filterAffiliateUrls(urls) {
+async function filterAffiliateUrls(urls) {
     if (!urls || urls.length === 0) return [];
     
-    // Domains/patterns to exclude (not affiliate stores)
-    const excludePatterns = [
+    // Base domains/patterns to exclude (hardcoded essentials)
+    const baseExcludePatterns = [
         /t\.me\//i,                    // Telegram links
         /telegram\.(me|org)\//i,       // Telegram
         /wa\.me\//i,                   // WhatsApp
         /whatsapp\.com/i,              // WhatsApp
-        /bit\.ly\//i,                  // Generic shorteners (unless resolved)
-        /tinyurl\.com/i,               // Generic shorteners
         /discord\.(gg|com)/i,          // Discord
-        /youtube\.com/i,               // YouTube
-        /youtu\.be/i,                  // YouTube short
-        /instagram\.com/i,             // Instagram
-        /facebook\.com/i,              // Facebook
-        /twitter\.com/i,               // Twitter
-        /x\.com/i,                     // Twitter/X
-        /tiktok\.com/i,                // TikTok
-        /tecnan\.com/i,                // Tecnan (blog/reference site)
-        /pelando\.com/i,               // Pelando (aggregator)
-        /promobit\.com/i,              // Promobit (aggregator)
-        /hardmob\.com/i,               // Hardmob (forum)
-        /gatry\.com/i,                 // Gatry (aggregator)
         /ofertasertao/i,               // Our own group
         /_bot$/i,                      // Bot usernames
-        /\/coin-index\//i,             // AliExpress coin pages (not product)
     ];
+    
+    // Get custom excluded patterns from database
+    let customPatterns = [];
+    try {
+        const dbPatterns = await ExcludedUrls.getPatterns();
+        customPatterns = dbPatterns.map(p => {
+            try {
+                return new RegExp(p, 'i');
+            } catch (e) {
+                // If not valid regex, create a simple pattern
+                return new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+            }
+        });
+    } catch (err) {
+        console.warn('[Filter] Error loading custom patterns:', err.message);
+    }
+    
+    const excludePatterns = [...baseExcludePatterns, ...customPatterns];
     
     // Domains to ALWAYS include (affiliate stores)
     const includePatterns = [
@@ -180,7 +185,7 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
     }
     
     // Filter out non-affiliate URLs (Telegram, blogs, etc)
-    const urls = filterAffiliateUrls(allUrls);
+    const urls = await filterAffiliateUrls(allUrls);
     if (urls.length === 0) {
         logger.warn('All URLs were filtered out (non-affiliate)');
         throw new Error('Nenhuma URL de loja afiliada encontrada (apenas links de Telegram/blogs)');
@@ -296,15 +301,15 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
             
             // Save to pending_promotions table
             const pendingData = {
-                original_text: text,
-                processed_text: processedText,
-                product_name: ai.title || meta.title || '',
+                originalText: text,
+                processedText: processedText,
+                productName: ai.title || meta.title || '',
                 price: ai.price || meta.price || '',
                 coupon: ai.coupon || '',
-                image_path: attachedPhotoUrl || meta.image || '',
-                urls: JSON.stringify(urls),
-                affiliate_urls: JSON.stringify(affiliateUrls),
-                suggested_category: ai.category || null,
+                imagePath: attachedPhotoUrl || meta.image || '',
+                urls: urls,
+                affiliateUrls: affiliateUrls,
+                suggestedCategory: ai.category || null,
                 source: source
             };
             

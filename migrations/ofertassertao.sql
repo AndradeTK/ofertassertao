@@ -99,6 +99,16 @@ CREATE TABLE IF NOT EXISTS system_logs (
     INDEX idx_type (type)
 );
 
+-- Tabela para URLs excluídas (padrões regex ou texto)
+CREATE TABLE IF NOT EXISTS excluded_urls (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    pattern VARCHAR(255) NOT NULL,
+    description VARCHAR(255),
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_active (active)
+);
+
 -- Tabela para promoções pendentes de aprovação (fallback quando IA falha)
 CREATE TABLE IF NOT EXISTS pending_promotions (
     id INT AUTO_INCREMENT PRIMARY KEY,

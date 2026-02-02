@@ -15,6 +15,7 @@ const Config = require('./models/configModel');
 const ForbiddenWords = require('./models/forbiddenWordsModel');
 const Settings = require('./models/settingsModel');
 const PendingPromotions = require('./models/pendingPromotionsModel');
+const ExcludedUrls = require('./models/excludedUrlsModel');
 const { classifyAndCaption } = require('./services/aiService');
 const { generateAffiliateLink } = require('./services/affiliateService');
 const { fetchMetadata } = require('./services/metaService');
@@ -592,6 +593,17 @@ app.post('/api/cookies/set', async (req, res) => {
     }
 });
 
+// Clear browser profile (forces new login)
+app.post('/api/cookies/clear-profile', async (req, res) => {
+    try {
+        const { platform } = req.body;
+        const result = CookieService.clearBrowserProfile(platform);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ========================= PENDING PROMOTIONS API =========================
 
 // Get all pending promotions
@@ -853,6 +865,66 @@ app.get('/api/categories', async (req, res) => {
 });
 
 // ========================= END PENDING PROMOTIONS API =========================
+
+// ========================= EXCLUDED URLS API =========================
+
+// Get all excluded URL patterns
+app.get('/api/excluded-urls', async (req, res) => {
+    try {
+        const urls = await ExcludedUrls.getAll();
+        res.json({ success: true, data: urls });
+    } catch (err) {
+        console.error('Error getting excluded URLs:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Add a new excluded URL pattern
+app.post('/api/excluded-urls', async (req, res) => {
+    try {
+        const { pattern, description } = req.body;
+        if (!pattern) {
+            return res.status(400).json({ error: 'Padrão é obrigatório' });
+        }
+        const id = await ExcludedUrls.add(pattern, description || '');
+        res.json({ success: true, id, message: 'Padrão adicionado com sucesso' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Update an excluded URL pattern
+app.put('/api/excluded-urls/:id', async (req, res) => {
+    try {
+        const { pattern, description, active } = req.body;
+        await ExcludedUrls.update(req.params.id, pattern, description, active);
+        res.json({ success: true, message: 'Padrão atualizado com sucesso' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Toggle active status
+app.post('/api/excluded-urls/:id/toggle', async (req, res) => {
+    try {
+        await ExcludedUrls.toggleActive(req.params.id);
+        res.json({ success: true, message: 'Status alterado' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Delete an excluded URL pattern
+app.delete('/api/excluded-urls/:id', async (req, res) => {
+    try {
+        await ExcludedUrls.delete(req.params.id);
+        res.json({ success: true, message: 'Padrão removido com sucesso' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ========================= END EXCLUDED URLS API =========================
 
 // Preview Post
 app.post('/api/preview', upload.single('image'), async (req, res) => {
@@ -1547,6 +1619,9 @@ initializePromotionFlow(bot, Config, wss);
 
 const server = httpServer.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
+  
+  // Load settings from database FIRST
+  await initializeApp();
   
   // Start scheduled posts processor
   startScheduledPostsProcessor();

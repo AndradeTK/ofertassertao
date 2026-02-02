@@ -433,6 +433,30 @@
                                 <span class="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm">Carregando...</span>
                             </div>
                         </div>
+
+                        <!-- Excluded URLs -->
+                        <div class="bg-white rounded-xl shadow-md p-6 lg:col-span-2">
+                            <h3 class="text-xl font-bold mb-4 text-gray-800">URLs Excluídas</h3>
+                            <p class="text-sm text-gray-600 mb-4">Domínios e padrões de URL que serão filtrados das promoções (blogs, agregadores, etc)</p>
+                            
+                            <form onsubmit="addExcludedUrl(event)" class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+                                <input type="text" id="excludedUrlPattern" required placeholder="Ex: afneto.com ou youtube\.com" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <input type="text" id="excludedUrlDescription" placeholder="Descrição (opcional)" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <button type="submit" class="px-6 py-2 bg-blue-900 hover:bg-blue-800 text-white font-semibold rounded-lg transition-colors">
+                                    <i class="fas fa-plus mr-2"></i>Adicionar
+                                </button>
+                            </form>
+                            
+                            <div class="text-xs text-blue-600 bg-blue-50 p-3 rounded mb-4">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                <strong>Dica:</strong> Você pode usar expressões regulares (regex). Ex: <code>youtube\.com</code> ou <code>bit\.ly</code>. 
+                                Para domínios simples, basta escrever o nome: <code>afneto.com</code>
+                            </div>
+
+                            <div id="excludedUrlsList" class="space-y-2 max-h-60 overflow-y-auto">
+                                <p class="text-gray-500 text-sm">Carregando...</p>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- SaaS System Settings -->
@@ -2042,6 +2066,10 @@ console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detect
                         'manual': 'bg-gray-100 text-gray-800'
                     }[promo.source] || 'bg-gray-100 text-gray-800';
                     
+                    // Truncate description for display (first 200 chars)
+                    const descriptionPreview = (promo.processed_text || promo.original_text || '').substring(0, 200);
+                    const hasMore = (promo.processed_text || promo.original_text || '').length > 200;
+                    
                     return `
                     <div class="border rounded-lg p-4 hover:shadow-md transition-shadow bg-white">
                         <div class="flex items-start gap-4">
@@ -2051,14 +2079,15 @@ console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detect
                                     <span class="px-2 py-1 rounded-full text-xs font-medium ${sourceBadge}">${promo.source}</span>
                                     <span class="text-xs text-gray-500">${new Date(promo.created_at).toLocaleString('pt-BR')}</span>
                                 </div>
-                                <h4 class="font-semibold text-gray-800 truncate">${promo.product_name || 'Produto sem nome'}</h4>
+                                <h4 class="font-semibold text-gray-800">${promo.product_name || 'Produto sem nome'}</h4>
                                 <div class="flex items-center gap-4 mt-1 text-sm text-gray-600">
                                     ${promo.price ? `<span class="text-green-600 font-medium">${promo.price}</span>` : ''}
                                     ${promo.coupon ? `<span><i class="fas fa-ticket-alt mr-1"></i>${promo.coupon}</span>` : ''}
                                 </div>
-                                ${promo.suggested_category ? `<p class="text-xs text-gray-400 mt-1">Sugestão IA: ${promo.suggested_category}</p>` : ''}
+                                <p class="text-sm text-gray-500 mt-2 whitespace-pre-line break-all">${descriptionPreview}${hasMore ? '...' : ''}</p>
+                                ${promo.suggested_category ? `<p class="text-xs text-blue-500 mt-2"><i class="fas fa-robot mr-1"></i>Sugestão IA: ${promo.suggested_category}</p>` : ''}
                             </div>
-                            <div class="flex flex-col gap-2">
+                            <div class="flex flex-col gap-2 flex-shrink-0">
                                 <button onclick="openEditModal(${promo.id})" class="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm">
                                     <i class="fas fa-edit mr-1"></i>Editar
                                 </button>
@@ -2230,6 +2259,7 @@ console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detect
             checkAPIStatus();
             refreshLogs();
             loadForbiddenWords();
+            loadExcludedUrls(); // Load excluded URL patterns
             loadSettings(); // Load SaaS settings
             checkUserMonitorStatus(); // Check user monitor status
             checkCookieStatus(); // Check cookie capture status
@@ -2310,6 +2340,104 @@ console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detect
                     showToast('Erro ao remover.', 'error');
                 }
             } catch(err) {
+                console.error(err);
+                showToast('Erro de conexão.', 'error');
+            }
+        }
+
+        // --- Excluded URLs Functions ---
+
+        async function loadExcludedUrls() {
+            try {
+                const res = await fetch('/api/excluded-urls');
+                const data = await res.json();
+                
+                if (!data.success || !data.data || data.data.length === 0) {
+                    document.getElementById('excludedUrlsList').innerHTML = '<p class="text-gray-500 text-sm italic">Nenhum padrão de URL excluído.</p>';
+                    return;
+                }
+                
+                const html = data.data.map(item => `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border ${item.active ? '' : 'opacity-50'}">
+                        <div class="flex-1">
+                            <code class="text-sm font-mono text-red-600">${item.pattern}</code>
+                            ${item.description ? `<span class="text-sm text-gray-500 ml-2">- ${item.description}</span>` : ''}
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="toggleExcludedUrl(${item.id})" class="px-3 py-1 text-sm rounded ${item.active ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}" title="${item.active ? 'Ativo - Clique para desativar' : 'Inativo - Clique para ativar'}">
+                                <i class="fas fa-${item.active ? 'check' : 'pause'}"></i>
+                            </button>
+                            <button onclick="deleteExcludedUrl(${item.id})" class="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+                
+                document.getElementById('excludedUrlsList').innerHTML = html;
+            } catch (err) {
+                console.error('Error loading excluded URLs:', err);
+                document.getElementById('excludedUrlsList').innerHTML = '<p class="text-red-500 text-sm">Erro ao carregar.</p>';
+            }
+        }
+
+        async function addExcludedUrl(event) {
+            event.preventDefault();
+            const patternInput = document.getElementById('excludedUrlPattern');
+            const descInput = document.getElementById('excludedUrlDescription');
+            
+            const pattern = patternInput.value.trim();
+            const description = descInput.value.trim();
+            
+            if (!pattern) return;
+            
+            try {
+                const res = await fetch('/api/excluded-urls', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pattern, description })
+                });
+                
+                if (res.ok) {
+                    showToast('Padrão de URL adicionado!', 'success');
+                    patternInput.value = '';
+                    descInput.value = '';
+                    loadExcludedUrls();
+                } else {
+                    showToast('Erro ao adicionar.', 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                showToast('Erro de conexão.', 'error');
+            }
+        }
+
+        async function toggleExcludedUrl(id) {
+            try {
+                const res = await fetch(`/api/excluded-urls/${id}/toggle`, { method: 'POST' });
+                if (res.ok) {
+                    loadExcludedUrls();
+                } else {
+                    showToast('Erro ao alterar status.', 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                showToast('Erro de conexão.', 'error');
+            }
+        }
+
+        async function deleteExcludedUrl(id) {
+            if (!confirm('Remover este padrão de URL?')) return;
+            
+            try {
+                const res = await fetch(`/api/excluded-urls/${id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    showToast('Padrão removido!', 'success');
+                    loadExcludedUrls();
+                } else {
+                    showToast('Erro ao remover.', 'error');
+                }
+            } catch (err) {
                 console.error(err);
                 showToast('Erro de conexão.', 'error');
             }
