@@ -31,6 +31,15 @@ let client = null;
 let isConnected = false;
 let isMonitoring = false;
 
+// Auto-reconnect settings
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const RECONNECT_DELAY = 5000; // 5 seconds between reconnect attempts
+let reconnectTimeout = null;
+let keepAliveInterval = null;
+let storedApiId = null;
+let storedApiHash = null;
+
 // Cache of monitored IDs for fast lookup (refreshed periodically)
 let monitoredIdsCache = new Set();
 let lastCacheRefresh = 0;
@@ -45,6 +54,10 @@ const POLLING_INTERVAL = 10000; // Check for new messages every 10 seconds
 let promotionQueue = [];
 let isProcessingQueue = false;
 const PROMOTION_DELAY = 10000; // 10 seconds between each promotion
+
+// Queue for direct sends (approved promotions from panel)
+let directSendQueue = [];
+let isProcessingDirectQueue = false;
 
 /**
  * Check if a URL is from an affiliate store (not Telegram, blogs, etc)
@@ -174,6 +187,10 @@ async function initClient(apiId, apiHash) {
         throw new Error('API_ID e API_HASH são obrigatórios');
     }
 
+    // Store credentials for auto-reconnect
+    storedApiId = apiId;
+    storedApiHash = apiHash;
+
     const sessionString = loadSession();
     const stringSession = new StringSession(sessionString);
 
@@ -181,13 +198,217 @@ async function initClient(apiId, apiHash) {
         connectionRetries: 5,
         useWSS: true,
         baseLogger: logger,
+        autoReconnect: true,
+        retryDelay: 3000,
     });
 
     // Enable catching up on missed messages
     client.floodSleepThreshold = 60;
 
+    // Set up connection event handlers
+    setupConnectionHandlers();
+
     logger.info('Telegram client initialized');
     return client;
+}
+
+/**
+ * Setup connection event handlers for auto-reconnect
+ */
+function setupConnectionHandlers() {
+    if (!client) return;
+
+    logger.info('Setting up connection handlers for auto-reconnect');
+
+    // Listen for disconnect events via client's internal mechanisms
+    if (client._connection) {
+        const originalOnDisconnect = client._connection._onDisconnect?.bind(client._connection);
+        client._connection._onDisconnect = async function(...args) {
+            logger.warn('Connection dropped, will attempt to reconnect...');
+            isConnected = false;
+            
+            // Notify frontend about disconnection
+            broadcastToClients({
+                type: 'connection_status',
+                status: 'disconnected',
+                message: 'Conexão perdida, tentando reconectar...'
+            });
+            
+            stopKeepAlive();
+            
+            if (originalOnDisconnect) {
+                await originalOnDisconnect(...args);
+            }
+            
+            // Trigger reconnection
+            scheduleReconnect();
+        };
+    }
+
+    // Also try to catch _handleUpdate for connection issues
+    if (typeof client._handleConnectionError === 'function') {
+        const originalErrorHandler = client._handleConnectionError.bind(client);
+        client._handleConnectionError = async function(...args) {
+            logger.warn('Connection error detected');
+            isConnected = false;
+            broadcastToClients({
+                type: 'connection_status',
+                status: 'error',
+                message: 'Erro de conexão detectado'
+            });
+            return originalErrorHandler(...args);
+        };
+    }
+}
+
+/**
+ * Schedule automatic reconnection
+ */
+function scheduleReconnect() {
+    if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+    }
+
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        logger.error(`Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Manual intervention required.`);
+        return;
+    }
+
+    const delay = RECONNECT_DELAY * Math.min(reconnectAttempts + 1, 5); // Exponential backoff, max 25s
+    logger.info(`Scheduling reconnect attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS} in ${delay/1000}s...`);
+
+    reconnectTimeout = setTimeout(async () => {
+        await attemptReconnect();
+    }, delay);
+
+    // Notify frontend about reconnection attempt
+    broadcastToClients({
+        type: 'connection_status',
+        status: 'reconnecting',
+        message: `Tentando reconectar (${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`,
+        attempt: reconnectAttempts + 1,
+        maxAttempts: MAX_RECONNECT_ATTEMPTS,
+        nextRetryIn: delay / 1000
+    });
+}
+
+/**
+ * Attempt to reconnect
+ */
+async function attemptReconnect() {
+    if (isConnected) {
+        logger.info('Already connected, skipping reconnect');
+        return;
+    }
+
+    reconnectAttempts++;
+    logger.info(`Attempting reconnect (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+
+    try {
+        if (!client) {
+            if (storedApiId && storedApiHash) {
+                await initClient(storedApiId, storedApiHash);
+            } else {
+                logger.error('Cannot reconnect: no stored credentials');
+                broadcastToClients({
+                    type: 'connection_status',
+                    status: 'error',
+                    message: 'Não foi possível reconectar: credenciais não encontradas'
+                });
+                return;
+            }
+        }
+
+        await client.connect();
+        
+        // Check if session is valid
+        const me = await client.getMe();
+        
+        isConnected = true;
+        reconnectAttempts = 0; // Reset counter on success
+        logger.info(`Reconnected successfully as ${me.firstName}`);
+
+        // Notify frontend about successful reconnection
+        broadcastToClients({
+            type: 'connection_status',
+            status: 'connected',
+            message: `Reconectado como ${me.firstName}`,
+            user: {
+                firstName: me.firstName,
+                username: me.username
+            }
+        });
+
+        // Restart monitoring if it was active
+        if (isMonitoring) {
+            logger.info('Restarting monitoring after reconnect...');
+            // Re-setup event handlers
+            await startMonitoring();
+        }
+
+        // Start keep-alive
+        startKeepAlive();
+
+    } catch (err) {
+        logger.error(`Reconnect failed: ${err.message}`);
+        isConnected = false;
+        
+        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+            broadcastToClients({
+                type: 'connection_status',
+                status: 'failed',
+                message: `Falha ao reconectar após ${MAX_RECONNECT_ATTEMPTS} tentativas. Requer intervenção manual.`
+            });
+        }
+        
+        scheduleReconnect();
+    }
+}
+
+/**
+ * Start keep-alive ping to prevent disconnection
+ */
+function startKeepAlive() {
+    if (keepAliveInterval) {
+        clearInterval(keepAliveInterval);
+    }
+
+    logger.info('Starting keep-alive system (ping every 3 minutes)');
+
+    // Send a ping every 3 minutes to keep connection alive
+    keepAliveInterval = setInterval(async () => {
+        if (!client || !isConnected) {
+            return;
+        }
+
+        try {
+            // Use getMe() as a simple keep-alive check
+            const me = await client.getMe();
+            logger.debug(`Keep-alive: connected as ${me.firstName}`);
+        } catch (err) {
+            logger.warn(`Keep-alive failed: ${err.message}`);
+            
+            // If ping fails, connection might be dead
+            if (err.message.includes('disconnect') || 
+                err.message.includes('connection') ||
+                err.message.includes('timeout') ||
+                err.message.includes('TIMEOUT')) {
+                isConnected = false;
+                stopKeepAlive();
+                scheduleReconnect();
+            }
+        }
+    }, 3 * 60 * 1000); // Every 3 minutes
+}
+
+/**
+ * Stop keep-alive
+ */
+function stopKeepAlive() {
+    if (keepAliveInterval) {
+        clearInterval(keepAliveInterval);
+        keepAliveInterval = null;
+    }
 }
 
 /**
@@ -301,6 +522,10 @@ async function connectWithSession(apiId, apiHash) {
             return { success: false, message: 'Nenhuma sessão salva encontrada' };
         }
 
+        // Store credentials for auto-reconnect
+        storedApiId = apiId;
+        storedApiHash = apiHash;
+
         if (!client) {
             await initClient(apiId, apiHash);
         }
@@ -319,6 +544,11 @@ async function connectWithSession(apiId, apiHash) {
         const me = await client.getMe();
         
         isConnected = true;
+        reconnectAttempts = 0; // Reset reconnect counter
+        
+        // Start keep-alive to prevent disconnection
+        startKeepAlive();
+        
         logger.info(`Connected as ${me.firstName} (@${me.username || 'no username'})`);
         
         return { 
@@ -344,6 +574,15 @@ async function connectWithSession(apiId, apiHash) {
  */
 async function disconnect() {
     try {
+        // Stop keep-alive
+        stopKeepAlive();
+        
+        // Clear any pending reconnect
+        if (reconnectTimeout) {
+            clearTimeout(reconnectTimeout);
+            reconnectTimeout = null;
+        }
+        
         if (client) {
             await client.disconnect();
         }
@@ -488,6 +727,90 @@ function enqueuePromotion(text, photoSource, source = 'unknown') {
 }
 
 /**
+ * Add approved promotion to direct send queue
+ * This is for promotions approved from the admin panel that are already processed
+ * @param {object} sendData - Contains all data needed to send: message, image, threadId, etc
+ */
+function enqueueDirectSend(sendData) {
+    directSendQueue.push({ ...sendData, addedAt: Date.now() });
+    console.log(`[DirectQueue] ➕ Promoção aprovada adicionada à fila (${directSendQueue.length} na fila) - ${sendData.productName || 'Produto'}`);
+    
+    // Broadcast queue update
+    broadcastQueueStatus();
+    
+    // Start processing if not already running
+    if (!isProcessingDirectQueue) {
+        processDirectSendQueue();
+    }
+    
+    return { queued: true, position: directSendQueue.length };
+}
+
+/**
+ * Process direct send queue with rate limiting
+ */
+async function processDirectSendQueue() {
+    if (isProcessingDirectQueue || directSendQueue.length === 0) return;
+    
+    isProcessingDirectQueue = true;
+    console.log(`[DirectQueue] 🚀 Iniciando processamento da fila de envio direto (${directSendQueue.length} itens)`);
+    broadcastQueueStatus();
+    
+    // Import required modules
+    const { globalRateLimiter } = require('./rateLimiter');
+    
+    while (directSendQueue.length > 0) {
+        const item = directSendQueue[0]; // Peek at first item
+        const waitTime = Math.floor((Date.now() - item.addedAt) / 1000);
+        
+        console.log(`[DirectQueue] 📤 Processando envio (aguardou ${waitTime}s, restam ${directSendQueue.length})`);
+        
+        // Check rate limit before sending
+        if (!globalRateLimiter.canProcess()) {
+            const status = globalRateLimiter.getStatus();
+            const waitSeconds = status.timeUntilNext || 65;
+            console.log(`[DirectQueue] ⏱️ Rate limit atingido! Aguardando ${waitSeconds}s...`);
+            broadcastQueueStatus();
+            await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
+            continue; // Re-check rate limit
+        }
+        
+        // Remove item from queue now that we can process
+        directSendQueue.shift();
+        broadcastQueueStatus();
+        
+        try {
+            // Call the send callback
+            if (item.sendCallback && typeof item.sendCallback === 'function') {
+                await item.sendCallback();
+                console.log(`[DirectQueue] ✅ Promoção ENVIADA: ${item.productName || 'Produto'}`);
+            }
+        } catch (err) {
+            console.error(`[DirectQueue] ❌ Erro ao enviar: ${err.message}`);
+            
+            // If rate limit error, re-queue and wait
+            if (err.message && (err.message.includes('Too Many Requests') || err.message.includes('FLOOD'))) {
+                directSendQueue.unshift(item);
+                console.log(`[DirectQueue] ⏱️ Rate limit do Telegram! Aguardando 65s...`);
+                broadcastQueueStatus();
+                await new Promise(resolve => setTimeout(resolve, 65000));
+                continue;
+            }
+        }
+        
+        // Wait before processing next item
+        if (directSendQueue.length > 0) {
+            console.log(`[DirectQueue] ⏳ Aguardando ${PROMOTION_DELAY/1000}s antes do próximo...`);
+            await new Promise(resolve => setTimeout(resolve, PROMOTION_DELAY));
+        }
+    }
+    
+    isProcessingDirectQueue = false;
+    console.log(`[DirectQueue] ✅ Fila de envio direto vazia`);
+    broadcastQueueStatus();
+}
+
+/**
  * Broadcast queue status to all clients
  */
 function broadcastQueueStatus() {
@@ -500,16 +823,18 @@ function broadcastQueueStatus() {
  */
 function getQueueStatusInternal() {
     const now = Date.now();
-    const queueLength = promotionQueue.length;
-    const isProcessing = isProcessingQueue;
+    // Include both queues in the count
+    const queueLength = promotionQueue.length + directSendQueue.length;
+    const isProcessing = isProcessingQueue || isProcessingDirectQueue;
     const estimatedTimeSeconds = queueLength * (PROMOTION_DELAY / 1000);
     
     let avgWaitTime = 0;
-    if (queueLength > 0) {
-        const totalWaitTime = promotionQueue.reduce((sum, item) => {
+    const allItems = [...promotionQueue, ...directSendQueue];
+    if (allItems.length > 0) {
+        const totalWaitTime = allItems.reduce((sum, item) => {
             return sum + (now - item.addedAt);
         }, 0);
-        avgWaitTime = Math.floor((totalWaitTime / queueLength) / 1000);
+        avgWaitTime = Math.floor((totalWaitTime / allItems.length) / 1000);
     }
     
     return {
@@ -517,7 +842,10 @@ function getQueueStatusInternal() {
         isProcessing,
         estimatedTimeSeconds,
         avgWaitTimeSeconds: avgWaitTime,
-        promotionDelay: PROMOTION_DELAY / 1000
+        promotionDelay: PROMOTION_DELAY / 1000,
+        // Additional details
+        monitorQueue: promotionQueue.length,
+        approvalQueue: directSendQueue.length
     };
 }
 
@@ -538,10 +866,13 @@ async function processPromotionQueue() {
         console.log(`[Queue] 📤 Processando promoção (aguardou ${waitTime}s na fila, restam ${promotionQueue.length})`);
         broadcastQueueStatus();
         
+        let wasSkipped = false;
+        
         try {
             const result = await handlePromotionFlow(item.text, null, item.photoSource);
             if (result && result.skipped) {
                 console.log(`[Queue] ⏭️ Promoção PULADA (duplicata já processada)`);
+                wasSkipped = true;
             } else {
                 console.log(`[Queue] ✅ Promoção ENVIADA com sucesso`);
             }
@@ -570,10 +901,12 @@ async function processPromotionQueue() {
             }
         }
         
-        // Wait before processing next item (only if there are more items)
-        if (promotionQueue.length > 0) {
+        // Wait before processing next item (only if there are more items AND promotion was NOT skipped)
+        if (promotionQueue.length > 0 && !wasSkipped) {
             console.log(`[Queue] ⏳ Aguardando ${PROMOTION_DELAY/1000}s antes da próxima...`);
             await new Promise(resolve => setTimeout(resolve, PROMOTION_DELAY));
+        } else if (promotionQueue.length > 0 && wasSkipped) {
+            console.log(`[Queue] ⚡ Promoção duplicata - processando próxima imediatamente...`);
         }
     }
     
@@ -1192,5 +1525,7 @@ module.exports = {
     stopMonitoring,
     refreshMonitoredGroups,
     getDialogs,
-    getQueueStatus
+    getQueueStatus,
+    enqueuePromotion,
+    enqueueDirectSend
 };

@@ -759,63 +759,57 @@ app.post('/api/pending-promotions/:id/approve', async (req, res) => {
         if (inviteLink) inlineKeyboard.push([{ text: 'Entrar no Grupo', url: inviteLink }]);
         const replyMarkup = inlineKeyboard.length > 0 ? { inline_keyboard: inlineKeyboard } : undefined;
         
-        // Send the promotion
         const imageSource = promotion.image_path;
         
-        if (imageSource) {
-            // Send to General if enabled
-            if (sendToGeneral) {
-                try {
+        // Create the send callback function
+        const sendCallback = async () => {
+            if (imageSource) {
+                // Send to General if enabled
+                if (sendToGeneral) {
                     await bot.telegram.sendPhoto(groupChatId, imageSource, {
                         caption: messageText,
                         parse_mode: 'HTML',
                         reply_markup: replyMarkup
                     });
-                } catch (err) {
-                    console.warn(`Failed to send to General: ${err.message}`);
                 }
-            }
-            
-            // Send to category topic
-            if (threadId) {
-                try {
+                
+                // Send to category topic
+                if (threadId) {
                     await bot.telegram.sendPhoto(groupChatId, imageSource, {
                         caption: messageText,
                         parse_mode: 'HTML',
                         message_thread_id: Number(threadId),
                         reply_markup: replyMarkup
                     });
-                } catch (err) {
-                    console.warn(`Failed to send to topic ${threadId}: ${err.message}`);
                 }
-            }
-        } else {
-            // Send without image
-            if (sendToGeneral) {
-                try {
+            } else {
+                // Send without image
+                if (sendToGeneral) {
                     await bot.telegram.sendMessage(groupChatId, messageText, {
                         parse_mode: 'HTML',
                         reply_markup: replyMarkup
                     });
-                } catch (err) {
-                    console.warn(`Failed to send to General: ${err.message}`);
                 }
-            }
-            
-            if (threadId) {
-                try {
+                
+                if (threadId) {
                     await bot.telegram.sendMessage(groupChatId, messageText, {
                         parse_mode: 'HTML',
                         message_thread_id: Number(threadId),
                         reply_markup: replyMarkup
                     });
-                } catch (err) {
-                    console.warn(`Failed to send to topic ${threadId}: ${err.message}`);
                 }
             }
-        }
+        };
         
-        // Mark as approved
+        // Enqueue the promotion for sending with rate limit
+        const queueResult = UserMonitor.enqueueDirectSend({
+            productName,
+            category: finalCategory,
+            threadId,
+            sendCallback
+        });
+        
+        // Mark as approved immediately (will be sent from queue)
         await PendingPromotions.approve(req.params.id, finalCategory);
         
         // Broadcast updated count
@@ -830,7 +824,12 @@ app.post('/api/pending-promotions/:id/approve', async (req, res) => {
             }
         });
         
-        res.json({ success: true, message: 'Promoção aprovada e enviada com sucesso' });
+        res.json({ 
+            success: true, 
+            message: `Promoção aprovada e adicionada à fila de envio (posição: ${queueResult.position})`,
+            queued: true,
+            position: queueResult.position
+        });
     } catch (err) {
         console.error('Error approving promotion:', err.message);
         res.status(500).json({ error: err.message });

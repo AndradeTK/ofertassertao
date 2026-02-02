@@ -48,10 +48,26 @@ class RateLimiter {
     }
 
     /**
-     * Check if we can process a new message
+     * Check if we can process a new message (without consuming a slot)
      * @returns {boolean} true if allowed, false if rate limited
      */
-    canProcess() {
+    checkLimit() {
+        const now = Date.now();
+        
+        // Remove timestamps older than the time window
+        this.messageTimestamps = this.messageTimestamps.filter(
+            timestamp => now - timestamp < this.timeWindow
+        );
+
+        // Check if we're under the limit
+        return this.messageTimestamps.length < this.maxMessages;
+    }
+
+    /**
+     * Consume a rate limit slot (call this when actually sending a message)
+     * @returns {boolean} true if slot consumed, false if rate limited
+     */
+    consumeSlot() {
         const now = Date.now();
         
         // Remove timestamps older than the time window
@@ -67,6 +83,15 @@ class RateLimiter {
         }
 
         return false;
+    }
+
+    /**
+     * Check if we can process a new message (LEGACY - consumes slot immediately)
+     * @deprecated Use checkLimit() + consumeSlot() instead
+     * @returns {boolean} true if allowed, false if rate limited
+     */
+    canProcess() {
+        return this.consumeSlot();
     }
 
     /**

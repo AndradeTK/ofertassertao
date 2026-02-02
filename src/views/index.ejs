@@ -2145,6 +2145,9 @@ console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detect
                         case 'rate_limit_update':
                             updateRateLimitDisplay(message.data);
                             break;
+                        case 'connection_status':
+                            handleConnectionStatusUpdate(message);
+                            break;
                         case 'pong':
                             // Connection alive
                             break;
@@ -2362,7 +2365,8 @@ console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detect
                 const data = await res.json();
                 
                 if (res.ok && data.success) {
-                    showToast('Promoção aprovada e enviada!', 'success');
+                    const position = data.position ? ` (posição ${data.position} na fila)` : '';
+                    showToast(`Promoção aprovada e adicionada à fila de envio!${position}`, 'success');
                     closeEditModal();
                     loadPendingPromotions();
                 } else {
@@ -2500,7 +2504,8 @@ console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detect
                 const data = await res.json();
                 
                 if (res.ok && data.success) {
-                    showToast('Promoção enviada (sem afiliado)', 'success');
+                    const position = data.position ? ` (posição ${data.position} na fila)` : '';
+                    showToast(`Promoção adicionada à fila de envio!${position}`, 'success');
                     loadNoAffiliatePromotions();
                 } else {
                     showToast(data.error || 'Erro ao aprovar promoção', 'error');
@@ -3010,6 +3015,58 @@ console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detect
             if (rateConfigMax) rateConfigMax.textContent = data.maxMessages || 5;
             if (rateConfigRemaining) rateConfigRemaining.textContent = data.remaining || data.maxMessages || 5;
             if (rateConfigReset) rateConfigReset.textContent = formatTime(data.timeUntilNext || 0);
+        }
+
+        // Handle Telegram MTProto connection status updates
+        function handleConnectionStatusUpdate(message) {
+            const status = message.status;
+            const statusMsg = message.message;
+            const statusDot = document.getElementById('userMonitorStatusDot');
+            const statusText = document.getElementById('userMonitorStatusText');
+            
+            switch (status) {
+                case 'disconnected':
+                    showToast(statusMsg || 'Conexão Telegram perdida', 'error');
+                    if (statusDot) statusDot.className = 'w-3 h-3 rounded-full bg-red-400 animate-pulse';
+                    if (statusText) {
+                        statusText.textContent = '⚠️ Desconectado (reconectando...)';
+                        statusText.className = 'text-sm text-red-600';
+                    }
+                    break;
+                    
+                case 'reconnecting':
+                    showToast(`Tentando reconectar (${message.attempt}/${message.maxAttempts})...`, 'warning');
+                    if (statusDot) statusDot.className = 'w-3 h-3 rounded-full bg-yellow-400 animate-pulse';
+                    if (statusText) {
+                        statusText.textContent = `🔄 Reconectando (${message.attempt}/${message.maxAttempts})...`;
+                        statusText.className = 'text-sm text-yellow-600';
+                    }
+                    break;
+                    
+                case 'connected':
+                    showToast(statusMsg || 'Reconectado com sucesso!', 'success');
+                    if (statusDot) statusDot.className = 'w-3 h-3 rounded-full bg-green-500';
+                    if (statusText) {
+                        statusText.textContent = '✅ Conectado';
+                        statusText.className = 'text-sm text-green-600';
+                    }
+                    // Refresh monitor status to get full details
+                    checkUserMonitorStatus();
+                    break;
+                    
+                case 'failed':
+                    showToast(statusMsg || 'Falha ao reconectar', 'error');
+                    if (statusDot) statusDot.className = 'w-3 h-3 rounded-full bg-red-600';
+                    if (statusText) {
+                        statusText.textContent = '❌ Falhou - Reconectar manualmente';
+                        statusText.className = 'text-sm text-red-600 font-medium';
+                    }
+                    break;
+                    
+                case 'error':
+                    showToast(statusMsg || 'Erro de conexão', 'error');
+                    break;
+            }
         }
 
         async function loadQueueStatus() {

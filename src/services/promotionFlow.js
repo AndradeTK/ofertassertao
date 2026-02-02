@@ -170,8 +170,8 @@ async function filterAffiliateUrls(urls) {
 }
 
 async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
-    // Check rate limit
-    if (!globalRateLimiter.canProcess()) {
+    // Check rate limit (without consuming slot - we only consume when actually sending)
+    if (!globalRateLimiter.checkLimit()) {
         const status = globalRateLimiter.getStatus();
         logger.warn(`Rate limit exceeded: ${status.current}/${status.max} messages in ${status.timeWindow}s`);
         throw new Error(`⏱️ Rate limit: aguarde ${status.timeWindow}s (${status.current}/${status.max} mensagens processadas)`);
@@ -597,6 +597,13 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
 
         logger.info(`[8/8] Sending to group ${groupChatId}, General: ${sendToGeneral ? 'enabled' : 'disabled'}, Category: ${threadId}`);
         console.log(`[8/8] Enviando para groupChatId: ${groupChatId}, General: ${sendToGeneral ? 'ativado' : 'desativado'}, Categoria: ${threadId}`);
+
+        // Consume rate limit slot now that we're actually sending
+        if (!globalRateLimiter.consumeSlot()) {
+            const status = globalRateLimiter.getStatus();
+            logger.warn(`Rate limit exceeded at send time: ${status.current}/${status.max}`);
+            throw new Error(`⏱️ Rate limit: aguarde ${status.timeWindow}s (${status.current}/${status.max} mensagens processadas)`);
+        }
 
         // Use attached photo (file_id) or meta image (URL)
         const imageSource = attachedPhotoUrl || meta.image;
