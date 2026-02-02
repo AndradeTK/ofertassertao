@@ -95,18 +95,36 @@ class PendingPromotions {
      */
     static async update(id, data) {
         const {
+            product_name,
             productName,
             price,
             coupon,
-            category
+            category,
+            suggested_category,
+            processed_text,
+            processedText
         } = data;
 
-        await pool.execute(
-            `UPDATE pending_promotions 
-            SET product_name = ?, price = ?, coupon = ?, suggested_category = ?
-            WHERE id = ?`,
-            [productName, price, coupon || '', category, id]
-        );
+        // Support both snake_case and camelCase
+        const finalProductName = product_name || productName || '';
+        const finalCategory = category || suggested_category || '';
+        const finalProcessedText = processed_text || processedText || null;
+
+        if (finalProcessedText) {
+            await pool.execute(
+                `UPDATE pending_promotions 
+                SET product_name = ?, price = ?, coupon = ?, suggested_category = ?, processed_text = ?
+                WHERE id = ?`,
+                [finalProductName, price || '', coupon || '', finalCategory, finalProcessedText, id]
+            );
+        } else {
+            await pool.execute(
+                `UPDATE pending_promotions 
+                SET product_name = ?, price = ?, coupon = ?, suggested_category = ?
+                WHERE id = ?`,
+                [finalProductName, price || '', coupon || '', finalCategory, id]
+            );
+        }
 
         return true;
     }
