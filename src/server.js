@@ -19,7 +19,7 @@ const ExcludedUrls = require('./models/excludedUrlsModel');
 const { classifyAndCaption } = require('./services/aiService');
 const { generateAffiliateLink } = require('./services/affiliateService');
 const { fetchMetadata } = require('./services/metaService');
-const { handlePromotionFlow, initializePromotionFlow, broadcastToClients } = require('./services/promotionFlow');
+const { handlePromotionFlow, initializePromotionFlow, broadcastToClients, checkDuplicateUrl, markUrlAsProcessed } = require('./services/promotionFlow');
 const { startScheduledPostsProcessor } = require('./services/scheduledPostsService');
 const { globalRateLimiter } = require('./services/rateLimiter');
 const UserMonitor = require('./services/userMonitorService');
@@ -585,6 +585,26 @@ app.post('/api/cookies/amazon/capture', async (req, res) => {
     }
 });
 
+// Open browser for AliExpress login
+app.post('/api/cookies/aliexpress/start', async (req, res) => {
+    try {
+        const result = await CookieService.startAliExpressLogin();
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Capture AliExpress cookies (after login)
+app.post('/api/cookies/aliexpress/capture', async (req, res) => {
+    try {
+        const result = await CookieService.captureAliExpressCookies();
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Cancel/close browser
 app.post('/api/cookies/cancel', async (req, res) => {
     try {
@@ -718,11 +738,7 @@ app.post('/api/pending-promotions/:id/approve', async (req, res) => {
             return res.status(404).json({ error: 'Promoção não encontrada' });
         }
         
-        // Get thread ID for the category
-        const finalCategory = category || promotion.suggested_category || 'Variados';
-        const threadId = await Category.getThreadIdByName(finalCategory);
-        
-        // Parse URLs
+        // Parse URLs first to get the affiliate URL for duplicate check
         let affiliateUrls;
         try {
             affiliateUrls = JSON.parse(promotion.affiliate_urls || '{}');
@@ -731,6 +747,37 @@ app.post('/api/pending-promotions/:id/approve', async (req, res) => {
         }
         
         const allAffiliateUrls = Object.values(affiliateUrls);
+        const primaryUrl = allAffiliateUrls[0] || promotion.original_url;
+        
+        // Check for duplicate using Redis
+        if (primaryUrl) {
+            const { isDuplicate } = await checkDuplicateUrl(primaryUrl);
+            if (isDuplicate) {
+                // Auto-reject the duplicate
+                await PendingPromotions.reject(req.params.id, 'Duplicado detectado pelo sistema');
+                
+                // Broadcast updated count
+                const count = await PendingPromotions.getPendingCount();
+                wss.clients.forEach(client => {
+                    if (client.readyState === 1) {
+                        client.send(JSON.stringify({
+                            type: 'pending_count_update',
+                            data: { count },
+                            timestamp: new Date().toISOString()
+                        }));
+                    }
+                });
+                
+                return res.status(409).json({ 
+                    error: 'Promoção duplicada detectada',
+                    duplicate: true 
+                });
+            }
+        }
+        
+        // Get thread ID for the category
+        const finalCategory = category || promotion.suggested_category || 'Variados';
+        const threadId = await Category.getThreadIdByName(finalCategory);
         
         // Build the message
         const productName = promotion.product_name || 'Produto';
@@ -969,9 +1016,29 @@ app.post('/api/pending-promotions/approve-all', async (req, res) => {
         const Category = require('./models/categoryModel');
         const { enqueueDirectSend } = require('./services/userMonitorService');
         let approvedCount = 0;
+        let skippedDuplicates = 0;
         
         for (const promo of pending) {
             try {
+                // Get primary URL for duplicate check
+                let affiliateUrls = {};
+                try {
+                    affiliateUrls = JSON.parse(promo.affiliate_urls || '{}');
+                } catch (e) {}
+                const allAffiliateUrls = Object.values(affiliateUrls);
+                const primaryUrl = allAffiliateUrls[0] || promo.original_url;
+                
+                // Check for duplicate using Redis
+                if (primaryUrl) {
+                    const { isDuplicate } = await checkDuplicateUrl(primaryUrl);
+                    if (isDuplicate) {
+                        // Auto-reject the duplicate
+                        await PendingPromotions.reject(promo.id, 'Duplicado detectado pelo sistema');
+                        skippedDuplicates++;
+                        continue;
+                    }
+                }
+                
                 // Use suggested category or 'Variados'
                 const category = promo.suggested_category || 'Variados';
                 const threadId = await Category.getThreadIdByName(category);
@@ -1024,8 +1091,13 @@ app.post('/api/pending-promotions/approve-all', async (req, res) => {
             }
         });
         
-        console.log(`[ApproveAll] ✅ ${approvedCount} promoções aprovadas`);
-        res.json({ success: true, message: `${approvedCount} promoções aprovadas`, count: approvedCount });
+        console.log(`[ApproveAll] ✅ ${approvedCount} promoções aprovadas, ${skippedDuplicates} duplicados ignorados`);
+        res.json({ 
+            success: true, 
+            message: `${approvedCount} promoções aprovadas${skippedDuplicates > 0 ? `, ${skippedDuplicates} duplicados ignorados` : ''}`, 
+            count: approvedCount,
+            skippedDuplicates 
+        });
     } catch (err) {
         console.error('Error approving all:', err.message);
         res.status(500).json({ error: err.message });
@@ -1084,9 +1156,29 @@ app.post('/api/no-affiliate-promotions/approve-all', async (req, res) => {
         const Category = require('./models/categoryModel');
         const { enqueueDirectSend } = require('./services/userMonitorService');
         let approvedCount = 0;
+        let skippedDuplicates = 0;
         
         for (const promo of pending) {
             try {
+                // Get primary URL for duplicate check
+                let affiliateUrls = {};
+                try {
+                    affiliateUrls = JSON.parse(promo.affiliate_urls || '{}');
+                } catch (e) {}
+                const allAffiliateUrls = Object.values(affiliateUrls);
+                const primaryUrl = allAffiliateUrls[0] || promo.original_url;
+                
+                // Check for duplicate using Redis
+                if (primaryUrl) {
+                    const { isDuplicate } = await checkDuplicateUrl(primaryUrl);
+                    if (isDuplicate) {
+                        // Auto-reject the duplicate
+                        await PendingPromotions.reject(promo.id, 'Duplicado detectado pelo sistema');
+                        skippedDuplicates++;
+                        continue;
+                    }
+                }
+                
                 const category = promo.suggested_category || 'Outros';
                 const threadId = await Category.getThreadIdByName(category);
                 
@@ -1136,8 +1228,13 @@ app.post('/api/no-affiliate-promotions/approve-all', async (req, res) => {
             }
         });
         
-        console.log(`[ApproveAllNoAff] ✅ ${approvedCount} promoções aprovadas`);
-        res.json({ success: true, message: `${approvedCount} promoções aprovadas`, count: approvedCount });
+        console.log(`[ApproveAllNoAff] ✅ ${approvedCount} promoções aprovadas, ${skippedDuplicates} duplicados ignorados`);
+        res.json({ 
+            success: true, 
+            message: `${approvedCount} promoções aprovadas${skippedDuplicates > 0 ? `, ${skippedDuplicates} duplicados ignorados` : ''}`, 
+            count: approvedCount,
+            skippedDuplicates 
+        });
     } catch (err) {
         console.error('Error approving all no-affiliate:', err.message);
         res.status(500).json({ error: err.message });

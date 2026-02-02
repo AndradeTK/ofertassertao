@@ -11,6 +11,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- GridStack.js for dynamic dashboard -->
+    <link href="https://cdn.jsdelivr.net/npm/gridstack@10.0.0/dist/gridstack.min.css" rel="stylesheet"/>
+    <link href="https://cdn.jsdelivr.net/npm/gridstack@10.0.0/dist/gridstack-extra.min.css" rel="stylesheet"/>
+    <script src="https://cdn.jsdelivr.net/npm/gridstack@10.0.0/dist/gridstack-all.js"></script>
     <style>
         body { 
             font-family: 'Montserrat', sans-serif;
@@ -22,36 +26,6 @@
             background: rgba(255, 255, 255, 0.08);
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.12);
-        }
-        
-        .card-gradient-blue {
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.1) 100%);
-            border: 1px solid rgba(59, 130, 246, 0.3);
-        }
-        
-        .card-gradient-green {
-            background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.1) 100%);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-        }
-        
-        .card-gradient-orange {
-            background: linear-gradient(135deg, rgba(249, 115, 22, 0.2) 0%, rgba(234, 88, 12, 0.1) 100%);
-            border: 1px solid rgba(249, 115, 22, 0.3);
-        }
-        
-        .card-gradient-purple {
-            background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(124, 58, 237, 0.1) 100%);
-            border: 1px solid rgba(139, 92, 246, 0.3);
-        }
-        
-        .card-gradient-red {
-            background: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(220, 38, 38, 0.1) 100%);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-        }
-        
-        .card-gradient-yellow {
-            background: linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(217, 119, 6, 0.1) 100%);
-            border: 1px solid rgba(245, 158, 11, 0.3);
         }
         
         .status-dot {
@@ -83,64 +57,6 @@
             50% { opacity: 0.6; transform: scale(0.95); }
         }
         
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: -16rem;
-            width: 16rem;
-            height: 100vh;
-            transition: left 0.3s ease;
-            z-index: 90;
-            background: linear-gradient(180deg, #1e3a8a 0%, #1e40af 100%);
-        }
-        
-        .sidebar.open {
-            left: 0;
-        }
-        
-        .sidebar-toggle {
-            position: fixed;
-            top: 1rem;
-            left: 1rem;
-            z-index: 100;
-            transition: left 0.3s ease;
-        }
-        
-        .sidebar-toggle.sidebar-open {
-            left: 17rem;
-        }
-        
-        .main-content {
-            transition: margin-left 0.3s ease;
-        }
-        
-        .main-content.sidebar-open {
-            margin-left: 16rem;
-        }
-        
-        .countdown-timer {
-            font-variant-numeric: tabular-nums;
-        }
-        
-        .activity-log {
-            max-height: 350px;
-            overflow-y: auto;
-        }
-        
-        .activity-log::-webkit-scrollbar {
-            width: 6px;
-        }
-        
-        .activity-log::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 3px;
-        }
-        
-        .activity-log::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 3px;
-        }
-        
         .stat-number {
             font-size: 2.5rem;
             font-weight: 700;
@@ -166,67 +82,38 @@
             to { transform: translateX(0); opacity: 1; }
         }
         
-        .groups-list {
-            max-height: 200px;
+        .activity-log {
+            max-height: 300px;
             overflow-y: auto;
         }
         
-        .groups-list::-webkit-scrollbar {
-            width: 4px;
+        /* Scrollbar global - bem fina */
+        ::-webkit-scrollbar {
+            width: 3px;
+            height: 3px;
         }
         
-        .groups-list::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.05);
+        ::-webkit-scrollbar-track {
+            background: transparent;
         }
         
-        .groups-list::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 2px;
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 3px;
         }
         
-        /* Progress bar animation */
-        @keyframes shimmer {
-            0% { background-position: -200% 0; }
-            100% { background-position: 200% 0; }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.25);
         }
         
-        .shimmer-effect {
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-            background-size: 200% 100%;
-            animation: shimmer 2s infinite;
-        }
-        
-        /* Mini chart container */
         .mini-chart {
             height: 60px;
         }
         
-        /* Blinking alert */
-        @keyframes blink-alert {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        
-        .blink-alert {
-            animation: blink-alert 1s infinite;
-        }
-        
-        /* Smooth counter animation */
         .counter-animated {
             transition: all 0.5s ease-out;
         }
         
-        /* Card hover effects */
-        .hover-lift {
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-        
-        .hover-lift:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-        }
-        
-        /* Network status bar */
         .network-bar {
             height: 4px;
             background: rgba(255,255,255,0.1);
@@ -239,578 +126,793 @@
             border-radius: 2px;
             transition: width 0.3s ease;
         }
+        
+        /* GridStack Custom Styles */
+        .gs-item-content {
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 1rem;
+            overflow: hidden;
+            height: 100%;
+        }
+        
+        .grid-stack {
+            background: transparent;
+        }
+        
+        .grid-stack-item {
+            cursor: move;
+        }
+        
+        .grid-stack-item.ui-draggable-dragging,
+        .grid-stack-item.ui-resizable-resizing {
+            z-index: 100 !important;
+        }
+        
+        .grid-stack-item.ui-draggable-dragging .gs-item-content,
+        .grid-stack-item.ui-resizable-resizing .gs-item-content {
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+            border-color: rgba(59, 130, 246, 0.5);
+        }
+        
+        .grid-stack > .grid-stack-item > .grid-stack-item-content {
+            inset: 4px;
+        }
+        
+        .grid-stack-placeholder > .placeholder-content {
+            background: rgba(59, 130, 246, 0.2) !important;
+            border: 2px dashed rgba(59, 130, 246, 0.5) !important;
+            border-radius: 1rem;
+        }
+        
+        .widget-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            cursor: move;
+            min-height: 48px;
+        }
+        
+        .widget-header h3 {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 600;
+        }
+        
+        .widget-body {
+            padding: 1rem;
+            height: calc(100% - 56px);
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        
+        .widget-body.compact {
+            padding: 0.5rem 1rem;
+        }
+        
+        .widget-controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .widget-controls button {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 0.375rem;
+            padding: 0.25rem 0.5rem;
+            color: rgba(255, 255, 255, 0.6);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .widget-controls button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+        
+        /* Settings Panel */
+        .settings-panel {
+            position: fixed;
+            top: 0;
+            right: -400px;
+            width: 400px;
+            height: 100vh;
+            background: linear-gradient(180deg, #1e3a8a 0%, #1e40af 100%);
+            z-index: 1000;
+            transition: right 0.3s ease;
+            overflow-y: auto;
+            box-shadow: -10px 0 30px rgba(0, 0, 0, 0.3);
+        }
+        
+        .settings-panel.open {
+            right: 0;
+        }
+        
+        .settings-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .settings-overlay.open {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .widget-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .widget-toggle:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .toggle-switch {
+            position: relative;
+            width: 48px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .toggle-switch.active {
+            background: #10b981;
+        }
+        
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s;
+        }
+        
+        .toggle-switch.active::after {
+            transform: translateX(24px);
+        }
+        
+        /* Locked mode */
+        .grid-stack.locked .grid-stack-item {
+            cursor: default;
+        }
+        
+        .grid-stack.locked .widget-header {
+            cursor: default;
+        }
+        
+        .groups-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body class="text-white overflow-x-hidden">
-    <!-- Sidebar Toggle Button -->
-    <button id="sidebarToggle" class="sidebar-toggle bg-blue-800 hover:bg-blue-700 text-white p-3 rounded-lg shadow-lg transition-all">
-        <i class="fas fa-bars text-lg"></i>
-    </button>
-
-    <!-- Sidebar -->
-    <aside id="sidebar" class="sidebar">
-        <div class="p-4 border-b border-blue-700">
-            <div class="flex items-center gap-3">
-                <img src="/img/logo.png" alt="Logo" class="h-10 w-10 rounded-lg shadow-lg" />
-                <div>
-                    <h1 class="font-bold text-lg">Ofertas do Sertão</h1>
-                    <p class="text-xs text-blue-200">Central de Monitoramento</p>
+    <!-- Top Bar -->
+    <header class="fixed top-0 left-0 right-0 z-50 bg-slate-900/80 backdrop-blur-lg border-b border-white/10">
+        <div class="flex items-center justify-between px-6 py-3">
+            <div class="flex items-center gap-4">
+                <a href="/" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
+                    <img src="/img/logo.png" alt="Logo" class="h-8 w-8 rounded-lg" />
+                    <span class="font-bold text-lg">Ofertas do Sertão</span>
+                </a>
+                <span class="text-blue-300 text-sm">| Central de Monitoramento</span>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <div id="wsStatus" class="flex items-center gap-2 glass-card px-3 py-1.5 rounded-full text-sm">
+                    <div class="status-dot offline"></div>
+                    <span>Conectando...</span>
                 </div>
+                
+                <div class="glass-card px-3 py-1.5 rounded-lg text-right">
+                    <p class="text-lg font-bold" id="currentTime">--:--:--</p>
+                </div>
+                
+                <button id="toggleLock" class="glass-card px-3 py-2 rounded-lg hover:bg-white/10 transition-colors" title="Bloquear/Desbloquear edição">
+                    <i class="fas fa-unlock text-green-400"></i>
+                </button>
+                
+                <button id="resetLayout" class="glass-card px-3 py-2 rounded-lg hover:bg-white/10 transition-colors" title="Resetar layout">
+                    <i class="fas fa-undo text-blue-400"></i>
+                </button>
+                
+                <button id="openSettings" class="glass-card px-3 py-2 rounded-lg hover:bg-white/10 transition-colors" title="Configurações de widgets">
+                    <i class="fas fa-cog text-blue-400"></i>
+                </button>
+                
+                <a href="/" class="glass-card px-3 py-2 rounded-lg hover:bg-white/10 transition-colors" title="Voltar ao Dashboard">
+                    <i class="fas fa-arrow-left text-blue-400"></i>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Settings Overlay -->
+    <div id="settingsOverlay" class="settings-overlay"></div>
+    
+    <!-- Settings Panel -->
+    <div id="settingsPanel" class="settings-panel">
+        <div class="p-6 border-b border-blue-700">
+            <div class="flex items-center justify-between">
+                <h2 class="text-xl font-bold">Configurações</h2>
+                <button id="closeSettings" class="text-blue-300 hover:text-white transition-colors">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
             </div>
         </div>
         
-        <nav class="p-4 space-y-2">
-            <a href="/" class="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-all text-blue-100 hover:text-white">
-                <i class="fas fa-chart-line w-5"></i>
-                <span>Dashboard</span>
-            </a>
-            <a href="/monitor" class="flex items-center gap-3 px-4 py-3 rounded-lg bg-blue-700 text-white">
-                <i class="fas fa-desktop w-5"></i>
-                <span>Monitor</span>
-            </a>
-            <div class="border-t border-blue-700 my-4"></div>
-            <a href="/" class="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-blue-700 transition-all text-blue-100 hover:text-white">
-                <i class="fas fa-cog w-5"></i>
-                <span>Configurações</span>
-            </a>
-        </nav>
-        
-        <div class="absolute bottom-4 left-4 right-4">
-            <div class="bg-blue-800/50 p-3 rounded-lg border border-blue-600">
-                <p class="text-xs text-blue-200 mb-1">Última atualização</p>
-                <p id="lastUpdate" class="text-sm font-medium">--:--:--</p>
+        <div class="p-6">
+            <h3 class="text-sm font-semibold text-blue-300 uppercase tracking-wider mb-4">Widgets Visíveis</h3>
+            <div id="widgetToggles" class="space-y-2">
+                <!-- Populated dynamically -->
+            </div>
+            
+            <div class="mt-8 pt-6 border-t border-blue-700">
+                <h3 class="text-sm font-semibold text-blue-300 uppercase tracking-wider mb-4">Ações</h3>
+                <button onclick="resetToDefault()" class="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors mb-3">
+                    <i class="fas fa-undo mr-2"></i>Restaurar Layout Padrão
+                </button>
+                <button onclick="saveLayout()" class="w-full px-4 py-3 bg-green-600 hover:bg-green-700 rounded-lg transition-colors mb-3">
+                    <i class="fas fa-save mr-2"></i>Salvar Layout
+                </button>
+                <button onclick="exportLayout()" class="w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors mb-3">
+                    <i class="fas fa-download mr-2"></i>Exportar Layout
+                </button>
+                <label class="w-full px-4 py-3 bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors block text-center cursor-pointer">
+                    <i class="fas fa-upload mr-2"></i>Importar Layout
+                    <input type="file" accept=".json" onchange="importLayout(event)" class="hidden">
+                </label>
             </div>
         </div>
-    </aside>
+    </div>
 
     <!-- Main Content -->
-    <main id="mainContent" class="main-content min-h-screen p-6 pt-20">
-        <!-- Header -->
-        <div class="flex items-center justify-between mb-6">
-            <div>
-                <h1 class="text-3xl font-bold text-white">
-                    <i class="fas fa-desktop text-blue-400 mr-3"></i>Central de Monitoramento
-                </h1>
-                <p class="text-blue-200 mt-1">Acompanhe todas as operações em tempo real</p>
-            </div>
-            <div class="flex items-center gap-4">
-                <div id="wsStatus" class="flex items-center gap-2 glass-card px-4 py-2 rounded-full">
-                    <div class="status-dot offline"></div>
-                    <span class="text-sm">Conectando...</span>
-                </div>
-                <div class="glass-card px-4 py-2 rounded-lg text-right">
-                    <p class="text-2xl font-bold countdown-timer" id="currentTime">--:--:--</p>
-                    <p class="text-xs text-blue-200" id="currentDate">--/--/----</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- API Status Bar -->
-        <div class="glass-card rounded-xl p-4 mb-6">
-            <div class="flex items-center justify-between flex-wrap gap-4">
-                <h4 class="text-sm font-medium text-blue-200 flex items-center gap-2">
-                    <i class="fas fa-plug text-blue-400"></i>Status das APIs
-                </h4>
-                <div class="flex items-center gap-6 flex-wrap">
-                    <div class="flex items-center gap-2" title="Shopee API">
-                        <span class="status-dot online" id="status-shopee"></span>
-                        <span class="text-sm text-blue-100">Shopee</span>
-                        <span id="latency-shopee" class="text-xs text-blue-300"></span>
-                    </div>
-                    <div class="flex items-center gap-2" title="Mercado Livre">
-                        <span class="status-dot online" id="status-ml"></span>
-                        <span class="text-sm text-blue-100">ML</span>
-                        <span id="latency-ml" class="text-xs text-blue-300"></span>
-                    </div>
-                    <div class="flex items-center gap-2" title="AliExpress">
-                        <span class="status-dot online" id="status-ali"></span>
-                        <span class="text-sm text-blue-100">AliExpress</span>
-                        <span id="latency-ali" class="text-xs text-blue-300"></span>
-                    </div>
-                    <div class="flex items-center gap-2" title="Amazon">
-                        <span class="status-dot online" id="status-amazon"></span>
-                        <span class="text-sm text-blue-100">Amazon</span>
-                        <span id="latency-amazon" class="text-xs text-blue-300"></span>
-                    </div>
-                    <div class="flex items-center gap-2" title="Google Gemini IA">
-                        <span class="status-dot online" id="status-ai"></span>
-                        <span class="text-sm text-blue-100">IA</span>
-                        <span id="latency-ai" class="text-xs text-blue-300"></span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Status Cards Row -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <!-- Telegram Connection -->
-            <div id="telegramCard" class="glass-card card-gradient-green rounded-xl p-5 hover-lift">
-                <div class="flex items-center justify-between mb-4">
-                    <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-xl flex items-center justify-center shadow-lg">
-                        <i class="fab fa-telegram text-2xl"></i>
-                    </div>
-                    <div id="telegramStatus" class="flex items-center gap-2">
-                        <div class="status-dot online"></div>
-                        <span class="text-sm text-green-400 font-medium">Conectado</span>
-                    </div>
-                </div>
-                <h3 class="text-blue-200 text-sm mb-1">Telegram MTProto</h3>
-                <p id="telegramUser" class="text-lg font-semibold">Carregando...</p>
-                <p id="telegramMonitoring" class="text-xs text-blue-300 mt-2">Verificando...</p>
-            </div>
-
-            <!-- Bot Status -->
-            <div id="botCard" class="glass-card card-gradient-green rounded-xl p-5 hover-lift">
-                <div class="flex items-center justify-between mb-4">
-                    <div class="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center shadow-lg">
-                        <i class="fas fa-robot text-2xl"></i>
-                    </div>
-                    <div id="botStatusIndicator" class="flex items-center gap-2">
-                        <div class="status-dot online"></div>
-                        <span class="text-sm text-green-400 font-medium">Ativo</span>
-                    </div>
-                </div>
-                <h3 class="text-blue-200 text-sm mb-1">Bot de Envio</h3>
-                <p id="botName" class="text-lg font-semibold">Ofertas do Sertão</p>
-                <p id="botUptime" class="text-xs text-green-300 mt-2"><i class="fas fa-clock mr-1"></i>Uptime: calculando...</p>
-            </div>
-
-            <!-- Pending Promotions -->
-            <div id="pendingCard" class="glass-card card-gradient-yellow rounded-xl p-5 hover-lift">
-                <div class="flex items-center justify-between mb-4">
-                    <div class="w-12 h-12 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center shadow-lg">
-                        <i class="fas fa-clock text-2xl"></i>
-                    </div>
-                    <a href="/" class="text-xs text-blue-300 hover:text-white transition-colors">
-                        Ver <i class="fas fa-arrow-right ml-1"></i>
-                    </a>
-                </div>
-                <h3 class="text-blue-200 text-sm mb-1">Pendentes</h3>
-                <div class="flex items-baseline gap-2">
-                    <span id="pendingCount" class="stat-number-sm text-white counter-animated">0</span>
-                    <span class="text-blue-300">promoções</span>
-                </div>
-                <p id="noAffiliateCount" class="text-xs text-yellow-300 mt-2">0 sem afiliado</p>
-            </div>
-
-            <!-- Errors / Alerts -->
-            <div id="errorsCard" class="glass-card card-gradient-green rounded-xl p-5 hover-lift">
-                <div class="flex items-center justify-between mb-4">
-                    <div class="w-12 h-12 bg-gradient-to-br from-red-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
-                        <i class="fas fa-exclamation-triangle text-2xl"></i>
-                    </div>
-                    <div id="errorsStatusIndicator" class="flex items-center gap-2">
-                        <div class="status-dot online"></div>
-                        <span class="text-sm text-green-400 font-medium">OK</span>
-                    </div>
-                </div>
-                <h3 class="text-blue-200 text-sm mb-1">Erros (24h)</h3>
-                <div class="flex items-baseline gap-2">
-                    <span id="errorsCount" class="stat-number-sm text-white counter-animated">0</span>
-                    <span class="text-blue-300">erros</span>
-                </div>
-                <p id="lastErrorTime" class="text-xs text-green-300 mt-2">Nenhum erro recente</p>
-            </div>
-        </div>
-
-        <!-- Queue & Rate Limit Detailed Section -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <!-- Queue Status Detailed -->
-            <div id="queueCard" class="glass-card rounded-xl p-6 hover-lift">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-semibold flex items-center gap-2">
-                        <i class="fas fa-list-ol text-purple-400"></i>
-                        Fila de Promoções
-                    </h3>
-                    <div id="queueStatusBadge" class="px-3 py-1 rounded-full bg-gray-600/50 text-xs font-medium">
-                        Idle
-                    </div>
-                </div>
-                
-                <div class="grid grid-cols-2 gap-4 mb-4">
-                    <div class="bg-purple-500/20 border border-purple-500/30 rounded-lg p-4 text-center">
-                        <p id="queueLength" class="stat-number-sm text-purple-400 counter-animated">0</p>
-                        <p class="text-xs text-purple-200 mt-1">Na Fila</p>
-                    </div>
-                    <div class="bg-purple-500/20 border border-purple-500/30 rounded-lg p-4 text-center">
-                        <p id="queueEtaValue" class="stat-number-sm text-purple-400">0s</p>
-                        <p class="text-xs text-purple-200 mt-1">Tempo Estimado</p>
-                    </div>
-                </div>
-                
-                <div class="flex items-center justify-between text-sm text-blue-200 mb-3">
-                    <span><i class="fas fa-clock mr-1 text-purple-400"></i>Delay: <span id="queueDelay" class="font-medium">10</span>s</span>
-                    <span><i class="fas fa-hourglass-half mr-1 text-purple-400"></i>Média: <span id="queueAvgWait" class="font-medium">0</span>s</span>
-                </div>
-                
-                <div class="space-y-2">
-                    <div class="flex justify-between text-xs text-blue-300">
-                        <span>Progresso da fila</span>
-                        <span id="queueProgressText">Aguardando...</span>
-                    </div>
-                    <div class="h-2 bg-white/10 rounded-full overflow-hidden">
-                        <div id="queueProgressBar" class="h-full bg-gradient-to-r from-purple-500 to-pink-400 rounded-full transition-all duration-500" style="width: 0%"></div>
-                    </div>
-                </div>
-                
-                <p id="queueEta" class="text-xs text-purple-300 mt-3 text-center font-medium">Fila vazia</p>
-            </div>
-
-            <!-- Rate Limit Detailed -->
-            <div id="rateLimitCard" class="glass-card rounded-xl p-6 hover-lift">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-semibold flex items-center gap-2">
-                        <i class="fas fa-tachometer-alt text-orange-400"></i>
-                        Rate Limit
-                    </h3>
-                    <div id="rateLimitStatus" class="flex items-center gap-2">
-                        <div class="status-dot online"></div>
-                        <span class="text-sm text-green-400 font-medium">OK</span>
-                    </div>
-                </div>
-                
-                <div class="grid grid-cols-4 gap-2 mb-4">
-                    <div class="bg-orange-500/20 border border-orange-500/30 rounded-lg p-3 text-center">
-                        <p class="text-lg font-bold text-orange-400">
-                            <span id="rateCurrent" class="counter-animated">0</span>/<span id="rateMax">5</span>
-                        </p>
-                        <p class="text-xs text-orange-200 mt-1">Mensagens</p>
-                    </div>
-                    <div class="bg-orange-500/20 border border-orange-500/30 rounded-lg p-3 text-center">
-                        <p id="rateWindow" class="text-lg font-bold text-orange-400">60</p>
-                        <p class="text-xs text-orange-200 mt-1">Janela (s)</p>
-                    </div>
-                    <div class="bg-orange-500/20 border border-orange-500/30 rounded-lg p-3 text-center">
-                        <p id="rateRemaining" class="text-lg font-bold text-orange-400 counter-animated">5</p>
-                        <p class="text-xs text-orange-200 mt-1">Restantes</p>
-                    </div>
-                    <div class="bg-orange-500/20 border border-orange-500/30 rounded-lg p-3 text-center" id="rateCooldownContainer">
-                        <p id="rateCooldownValue" class="text-lg font-bold text-orange-400">0s</p>
-                        <p class="text-xs text-orange-200 mt-1">Libera em</p>
-                    </div>
-                </div>
-                
-                <div class="space-y-2">
-                    <div class="flex justify-between text-xs text-blue-300">
-                        <span>Uso do Rate Limit</span>
-                        <span id="rateStatusText">Disponível para enviar</span>
-                    </div>
-                    <div class="h-3 bg-white/10 rounded-full overflow-hidden">
-                        <div id="rateProgress" class="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full transition-all duration-500" style="width: 0%"></div>
-                    </div>
-                </div>
-                
-                <p id="rateCooldown" class="text-xs text-green-400 mt-3 text-center font-medium">✅ Pronto para enviar</p>
-            </div>
-        </div>
-
-        <!-- Main Content Grid -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            <!-- Today's Stats -->
-            <div class="glass-card rounded-xl p-6 hover-lift">
-                <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <i class="fas fa-chart-bar text-blue-400"></i>
-                    Estatísticas de Hoje
-                </h3>
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="bg-green-500/20 border border-green-500/30 rounded-lg p-4 text-center">
-                        <p id="statSentToday" class="stat-number-sm text-green-400 counter-animated">0</p>
-                        <p class="text-xs text-green-200 mt-1">Enviadas</p>
-                    </div>
-                    <div class="bg-blue-500/20 border border-blue-500/30 rounded-lg p-4 text-center">
-                        <p id="statApprovedToday" class="stat-number-sm text-blue-400 counter-animated">0</p>
-                        <p class="text-xs text-blue-200 mt-1">Aprovadas</p>
-                    </div>
-                    <div class="bg-red-500/20 border border-red-500/30 rounded-lg p-4 text-center">
-                        <p id="statRejectedToday" class="stat-number-sm text-red-400 counter-animated">0</p>
-                        <p class="text-xs text-red-200 mt-1">Rejeitadas</p>
-                    </div>
-                    <div class="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-4 text-center">
-                        <p id="statDuplicatesToday" class="stat-number-sm text-yellow-400 counter-animated">0</p>
-                        <p class="text-xs text-yellow-200 mt-1">Duplicadas</p>
-                    </div>
-                </div>
-                <div class="mt-4 pt-4 border-t border-white/10">
-                    <div class="flex justify-between text-sm mb-2">
-                        <span class="text-blue-200">Taxa de Aprovação</span>
-                        <span id="approvalRate" class="text-green-400 font-medium">0%</span>
-                    </div>
-                    <div class="h-2 bg-white/10 rounded-full overflow-hidden">
-                        <div id="approvalRateBar" class="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full transition-all duration-500" style="width: 0%"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Hourly Activity Chart -->
-            <div class="glass-card rounded-xl p-6 hover-lift">
-                <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <i class="fas fa-chart-line text-cyan-400"></i>
-                    Atividade por Hora
-                </h3>
-                <div class="mini-chart mb-4">
-                    <canvas id="hourlyChart"></canvas>
-                </div>
-                <div class="grid grid-cols-3 gap-2 text-center">
-                    <div class="bg-white/5 rounded-lg p-2">
-                        <p class="text-xs text-blue-300">Pico</p>
-                        <p id="peakHour" class="text-sm font-medium text-white">--:00</p>
-                    </div>
-                    <div class="bg-white/5 rounded-lg p-2">
-                        <p class="text-xs text-blue-300">Média/h</p>
-                        <p id="avgPerHour" class="text-sm font-medium text-white">0</p>
-                    </div>
-                    <div class="bg-white/5 rounded-lg p-2">
-                        <p class="text-xs text-blue-300">Atual</p>
-                        <p id="currentHourCount" class="text-sm font-medium text-white">0</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Performance Metrics -->
-            <div class="glass-card rounded-xl p-6 hover-lift">
-                <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <i class="fas fa-tachometer-alt text-green-400"></i>
-                    Performance
-                </h3>
-                <div class="space-y-4">
-                    <div>
-                        <div class="flex justify-between text-sm mb-1">
-                            <span class="text-blue-200">Tempo médio processamento</span>
-                            <span id="avgProcessingTime" class="text-green-400 font-medium">0ms</span>
-                        </div>
-                        <div class="network-bar">
-                            <div id="processingTimeBar" class="network-bar-fill bg-gradient-to-r from-green-500 to-emerald-400" style="width: 20%"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="flex justify-between text-sm mb-1">
-                            <span class="text-blue-200">Taxa de conversão links</span>
-                            <span id="linkConversionRate" class="text-blue-400 font-medium">0%</span>
-                        </div>
-                        <div class="network-bar">
-                            <div id="linkConversionBar" class="network-bar-fill bg-gradient-to-r from-blue-500 to-cyan-400" style="width: 0%"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="flex justify-between text-sm mb-1">
-                            <span class="text-blue-200">Cache hit rate</span>
-                            <span id="cacheHitRate" class="text-purple-400 font-medium">0%</span>
-                        </div>
-                        <div class="network-bar">
-                            <div id="cacheHitBar" class="network-bar-fill bg-gradient-to-r from-purple-500 to-pink-400" style="width: 0%"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="flex justify-between text-sm mb-1">
-                            <span class="text-blue-200">Classificação IA</span>
-                            <span id="aiClassificationRate" class="text-yellow-400 font-medium">0%</span>
-                        </div>
-                        <div class="network-bar">
-                            <div id="aiClassificationBar" class="network-bar-fill bg-gradient-to-r from-yellow-500 to-orange-400" style="width: 0%"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Secondary Content Grid -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            <!-- Groups Monitored -->
-            <div class="glass-card rounded-xl p-6 hover-lift">
-                <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <i class="fas fa-users text-purple-400"></i>
-                    Grupos Monitorados
-                    <span id="groupsCount" class="ml-auto text-sm bg-purple-500/30 px-2 py-0.5 rounded-full">0</span>
-                </h3>
-                <div id="groupsList" class="groups-list space-y-2">
-                    <div class="text-blue-300 text-sm text-center py-4">
-                        <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
-                        <p>Carregando...</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- System Health -->
-            <div class="glass-card rounded-xl p-6 hover-lift">
-                <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <i class="fas fa-heartbeat text-red-400"></i>
-                    Saúde do Sistema
-                </h3>
-                <div class="space-y-4">
-                    <div>
-                        <div class="flex justify-between text-sm mb-1">
-                            <span class="text-blue-200">Redis Cache</span>
-                            <span id="redisStatus" class="text-green-400 font-medium">Conectado</span>
-                        </div>
-                        <div class="h-2 bg-white/10 rounded-full overflow-hidden">
-                            <div id="redisHealthBar" class="h-full w-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="flex justify-between text-sm mb-1">
-                            <span class="text-blue-200">MySQL Database</span>
-                            <span id="mysqlStatus" class="text-green-400 font-medium">Conectado</span>
-                        </div>
-                        <div class="h-2 bg-white/10 rounded-full overflow-hidden">
-                            <div id="mysqlHealthBar" class="h-full w-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="flex justify-between text-sm mb-1">
-                            <span class="text-blue-200">Bot Telegram</span>
-                            <span id="botStatus" class="text-green-400 font-medium">Ativo</span>
-                        </div>
-                        <div class="h-2 bg-white/10 rounded-full overflow-hidden">
-                            <div id="botHealthBar" class="h-full w-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="flex justify-between text-sm mb-1">
-                            <span class="text-blue-200">Puppeteer</span>
-                            <span id="puppeteerStatus" class="text-green-400 font-medium">Pronto</span>
-                        </div>
-                        <div class="h-2 bg-white/10 rounded-full overflow-hidden">
-                            <div id="puppeteerHealthBar" class="h-full w-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full"></div>
-                        </div>
-                    </div>
-                    <div class="pt-2 border-t border-white/10">
-                        <div class="flex justify-between text-sm">
-                            <span class="text-blue-200">WebSocket</span>
-                            <span id="wsStatusText" class="text-gray-400">Conectando...</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Source Distribution -->
-            <div class="glass-card rounded-xl p-6 hover-lift">
-                <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <i class="fas fa-store text-orange-400"></i>
-                    Distribuição por Loja
-                </h3>
-                <div id="sourceDistribution" class="space-y-3">
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <span class="text-xs font-bold">ML</span>
-                        </div>
-                        <div class="flex-1">
-                            <div class="flex justify-between text-sm mb-1">
-                                <span class="text-blue-200">Mercado Livre</span>
-                                <span id="sourceMl" class="text-yellow-400 font-medium">0</span>
-                            </div>
-                            <div class="network-bar">
-                                <div id="sourceMlBar" class="network-bar-fill bg-gradient-to-r from-yellow-500 to-yellow-400" style="width: 0%"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <i class="fas fa-shopping-bag text-xs"></i>
-                        </div>
-                        <div class="flex-1">
-                            <div class="flex justify-between text-sm mb-1">
-                                <span class="text-blue-200">Shopee</span>
-                                <span id="sourceShopee" class="text-orange-400 font-medium">0</span>
-                            </div>
-                            <div class="network-bar">
-                                <div id="sourceShopeeBar" class="network-bar-fill bg-gradient-to-r from-orange-500 to-red-400" style="width: 0%"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 bg-gradient-to-br from-orange-600 to-orange-700 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <i class="fab fa-amazon text-xs"></i>
-                        </div>
-                        <div class="flex-1">
-                            <div class="flex justify-between text-sm mb-1">
-                                <span class="text-blue-200">Amazon</span>
-                                <span id="sourceAmazon" class="text-orange-400 font-medium">0</span>
-                            </div>
-                            <div class="network-bar">
-                                <div id="sourceAmazonBar" class="network-bar-fill bg-gradient-to-r from-orange-600 to-orange-500" style="width: 0%"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <span class="text-xs font-bold">AE</span>
-                        </div>
-                        <div class="flex-1">
-                            <div class="flex justify-between text-sm mb-1">
-                                <span class="text-blue-200">AliExpress</span>
-                                <span id="sourceAli" class="text-red-400 font-medium">0</span>
-                            </div>
-                            <div class="network-bar">
-                                <div id="sourceAliBar" class="network-bar-fill bg-gradient-to-r from-red-500 to-red-400" style="width: 0%"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Activity and Last Sent -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <!-- Recent Activity -->
-            <div class="glass-card rounded-xl p-6">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-semibold flex items-center gap-2">
-                        <i class="fas fa-history text-cyan-400"></i>
-                        Atividade Recente
-                    </h3>
-                    <button onclick="clearActivityLog()" class="text-xs text-blue-300 hover:text-white transition-colors">
-                        <i class="fas fa-trash mr-1"></i>Limpar
-                    </button>
-                </div>
-                <div id="activityLog" class="activity-log space-y-2">
-                    <div class="text-blue-300 text-sm text-center py-8">
-                        <i class="fas fa-inbox text-3xl mb-2 opacity-50"></i>
-                        <p>Aguardando atividades...</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Last Sent Promotions -->
-            <div class="glass-card rounded-xl p-6">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-semibold flex items-center gap-2">
-                        <i class="fas fa-paper-plane text-green-400"></i>
-                        Últimas Enviadas
-                    </h3>
-                    <button onclick="refreshLastSent()" class="text-xs text-blue-300 hover:text-white transition-colors">
-                        <i class="fas fa-sync-alt mr-1"></i>Atualizar
-                    </button>
-                </div>
-                <div id="lastSentList" class="space-y-3 max-h-80 overflow-y-auto">
-                    <div class="text-blue-300 text-sm text-center py-8">
-                        <i class="fas fa-spinner fa-spin text-3xl mb-2"></i>
-                        <p>Carregando...</p>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <main class="pt-20 p-4 min-h-screen">
+        <div class="grid-stack" id="grid"></div>
     </main>
 
     <!-- Toast Container -->
-    <div id="toastContainer"></div>
+    <div id="toastContainer" class="fixed top-20 right-4 z-50 space-y-2"></div>
 
     <script>
+        // Widget definitions
+        const widgetDefinitions = {
+            'telegram': {
+                title: 'Telegram MTProto',
+                icon: 'fab fa-telegram text-blue-400',
+                defaultSize: { w: 3, h: 2 },
+                minSize: { w: 2, h: 2 },
+                content: () => `
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-xl flex items-center justify-center shadow-lg">
+                            <i class="fab fa-telegram text-2xl"></i>
+                        </div>
+                        <div id="telegramStatus" class="flex items-center gap-2">
+                            <div class="status-dot online"></div>
+                            <span class="text-sm text-green-400 font-medium">Conectado</span>
+                        </div>
+                    </div>
+                    <p id="telegramUser" class="text-lg font-semibold">Carregando...</p>
+                    <p id="telegramMonitoring" class="text-xs text-blue-300 mt-2">Verificando...</p>
+                `
+            },
+            'bot': {
+                title: 'Bot de Envio',
+                icon: 'fas fa-robot text-green-400',
+                defaultSize: { w: 3, h: 2 },
+                minSize: { w: 2, h: 2 },
+                content: () => `
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center shadow-lg">
+                            <i class="fas fa-robot text-2xl"></i>
+                        </div>
+                        <div id="botStatusIndicator" class="flex items-center gap-2">
+                            <div class="status-dot online"></div>
+                            <span class="text-sm text-green-400 font-medium">Ativo</span>
+                        </div>
+                    </div>
+                    <p id="botName" class="text-lg font-semibold">Ofertas do Sertão</p>
+                    <p id="botUptime" class="text-xs text-green-300 mt-2"><i class="fas fa-clock mr-1"></i>Uptime: calculando...</p>
+                `
+            },
+            'pending': {
+                title: 'Pendentes',
+                icon: 'fas fa-clock text-yellow-400',
+                defaultSize: { w: 3, h: 2 },
+                minSize: { w: 2, h: 2 },
+                content: () => `
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center shadow-lg">
+                            <i class="fas fa-clock text-2xl"></i>
+                        </div>
+                        <a href="/" class="text-xs text-blue-300 hover:text-white transition-colors">
+                            Ver <i class="fas fa-arrow-right ml-1"></i>
+                        </a>
+                    </div>
+                    <div class="flex items-baseline gap-2">
+                        <span id="pendingCount" class="stat-number-sm text-white counter-animated">0</span>
+                        <span class="text-blue-300">promoções</span>
+                    </div>
+                    <p id="noAffiliateCount" class="text-xs text-yellow-300 mt-2">0 sem afiliado</p>
+                `
+            },
+            'errors': {
+                title: 'Erros (24h)',
+                icon: 'fas fa-exclamation-triangle text-red-400',
+                defaultSize: { w: 3, h: 2 },
+                minSize: { w: 2, h: 2 },
+                content: () => `
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-gradient-to-br from-red-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
+                            <i class="fas fa-exclamation-triangle text-2xl"></i>
+                        </div>
+                        <div id="errorsStatusIndicator" class="flex items-center gap-2">
+                            <div class="status-dot online"></div>
+                            <span class="text-sm text-green-400 font-medium">OK</span>
+                        </div>
+                    </div>
+                    <div class="flex items-baseline gap-2">
+                        <span id="errorsCount" class="stat-number-sm text-white counter-animated">0</span>
+                        <span class="text-blue-300">erros</span>
+                    </div>
+                    <p id="lastErrorTime" class="text-xs text-green-300 mt-2">Nenhum erro recente</p>
+                `
+            },
+            'queue': {
+                title: 'Fila de Promoções',
+                icon: 'fas fa-list-ol text-purple-400',
+                defaultSize: { w: 6, h: 4 },
+                minSize: { w: 4, h: 3 },
+                content: () => `
+                    <div class="flex items-center justify-between mb-4">
+                        <div id="queueStatusBadge" class="px-3 py-1 rounded-full bg-gray-600/50 text-xs font-medium">Idle</div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="bg-purple-500/20 border border-purple-500/30 rounded-lg p-4 text-center">
+                            <p id="queueLength" class="stat-number-sm text-purple-400 counter-animated">0</p>
+                            <p class="text-xs text-purple-200 mt-1">Na Fila</p>
+                        </div>
+                        <div class="bg-purple-500/20 border border-purple-500/30 rounded-lg p-4 text-center">
+                            <p id="queueEtaValue" class="stat-number-sm text-purple-400">0s</p>
+                            <p class="text-xs text-purple-200 mt-1">Tempo Estimado</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between text-sm text-blue-200 mb-3">
+                        <span><i class="fas fa-clock mr-1 text-purple-400"></i>Delay: <span id="queueDelay" class="font-medium">10</span>s</span>
+                        <span><i class="fas fa-hourglass-half mr-1 text-purple-400"></i>Média: <span id="queueAvgWait" class="font-medium">0</span>s</span>
+                    </div>
+                    <div class="space-y-2">
+                        <div class="flex justify-between text-xs text-blue-300">
+                            <span>Progresso da fila</span>
+                            <span id="queueProgressText">Aguardando...</span>
+                        </div>
+                        <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+                            <div id="queueProgressBar" class="h-full bg-gradient-to-r from-purple-500 to-pink-400 rounded-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <p id="queueEta" class="text-xs text-purple-300 mt-3 text-center font-medium">Fila vazia</p>
+                `
+            },
+            'ratelimit': {
+                title: 'Rate Limit',
+                icon: 'fas fa-tachometer-alt text-orange-400',
+                defaultSize: { w: 6, h: 4 },
+                minSize: { w: 4, h: 3 },
+                content: () => `
+                    <div class="flex items-center justify-between mb-4">
+                        <div id="rateLimitStatus" class="flex items-center gap-2">
+                            <div class="status-dot online"></div>
+                            <span class="text-sm text-green-400 font-medium">OK</span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-4 gap-2 mb-4">
+                        <div class="bg-orange-500/20 border border-orange-500/30 rounded-lg p-3 text-center">
+                            <p class="text-lg font-bold text-orange-400">
+                                <span id="rateCurrent" class="counter-animated">0</span>/<span id="rateMax">5</span>
+                            </p>
+                            <p class="text-xs text-orange-200 mt-1">Mensagens</p>
+                        </div>
+                        <div class="bg-orange-500/20 border border-orange-500/30 rounded-lg p-3 text-center">
+                            <p id="rateWindow" class="text-lg font-bold text-orange-400">60</p>
+                            <p class="text-xs text-orange-200 mt-1">Janela (s)</p>
+                        </div>
+                        <div class="bg-orange-500/20 border border-orange-500/30 rounded-lg p-3 text-center">
+                            <p id="rateRemaining" class="text-lg font-bold text-orange-400 counter-animated">5</p>
+                            <p class="text-xs text-orange-200 mt-1">Restantes</p>
+                        </div>
+                        <div class="bg-orange-500/20 border border-orange-500/30 rounded-lg p-3 text-center">
+                            <p id="rateCooldownValue" class="text-lg font-bold text-orange-400">0s</p>
+                            <p class="text-xs text-orange-200 mt-1">Libera em</p>
+                        </div>
+                    </div>
+                    <div class="space-y-2">
+                        <div class="flex justify-between text-xs text-blue-300">
+                            <span>Uso do Rate Limit</span>
+                            <span id="rateStatusText">Disponível para enviar</span>
+                        </div>
+                        <div class="h-3 bg-white/10 rounded-full overflow-hidden">
+                            <div id="rateProgress" class="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <p id="rateCooldown" class="text-xs text-green-400 mt-3 text-center font-medium">✅ Pronto para enviar</p>
+                `
+            },
+            'stats': {
+                title: 'Estatísticas de Hoje',
+                icon: 'fas fa-chart-bar text-blue-400',
+                defaultSize: { w: 4, h: 4 },
+                minSize: { w: 3, h: 3 },
+                content: () => `
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <div class="bg-green-500/20 border border-green-500/30 rounded-lg p-4 text-center">
+                            <p id="statSentToday" class="stat-number-sm text-green-400 counter-animated">0</p>
+                            <p class="text-xs text-green-200 mt-1">Enviadas</p>
+                        </div>
+                        <div class="bg-blue-500/20 border border-blue-500/30 rounded-lg p-4 text-center">
+                            <p id="statApprovedToday" class="stat-number-sm text-blue-400 counter-animated">0</p>
+                            <p class="text-xs text-blue-200 mt-1">Aprovadas</p>
+                        </div>
+                        <div class="bg-red-500/20 border border-red-500/30 rounded-lg p-4 text-center">
+                            <p id="statRejectedToday" class="stat-number-sm text-red-400 counter-animated">0</p>
+                            <p class="text-xs text-red-200 mt-1">Rejeitadas</p>
+                        </div>
+                        <div class="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-4 text-center">
+                            <p id="statDuplicatesToday" class="stat-number-sm text-yellow-400 counter-animated">0</p>
+                            <p class="text-xs text-yellow-200 mt-1">Duplicadas</p>
+                        </div>
+                    </div>
+                    <div class="pt-3 border-t border-white/10">
+                        <div class="flex justify-between text-sm mb-2">
+                            <span class="text-blue-200">Taxa de Aprovação</span>
+                            <span id="approvalRate" class="text-green-400 font-medium">0%</span>
+                        </div>
+                        <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+                            <div id="approvalRateBar" class="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+                `
+            },
+            'hourly': {
+                title: 'Atividade por Hora',
+                icon: 'fas fa-chart-line text-cyan-400',
+                defaultSize: { w: 4, h: 3 },
+                minSize: { w: 3, h: 3 },
+                content: () => `
+                    <div class="mini-chart mb-4">
+                        <canvas id="hourlyChart"></canvas>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 text-center">
+                        <div class="bg-white/5 rounded-lg p-2">
+                            <p class="text-xs text-blue-300">Pico</p>
+                            <p id="peakHour" class="text-sm font-medium text-white">--:00</p>
+                        </div>
+                        <div class="bg-white/5 rounded-lg p-2">
+                            <p class="text-xs text-blue-300">Média/h</p>
+                            <p id="avgPerHour" class="text-sm font-medium text-white">0</p>
+                        </div>
+                        <div class="bg-white/5 rounded-lg p-2">
+                            <p class="text-xs text-blue-300">Atual</p>
+                            <p id="currentHourCount" class="text-sm font-medium text-white">0</p>
+                        </div>
+                    </div>
+                `
+            },
+            'performance': {
+                title: 'Performance',
+                icon: 'fas fa-tachometer-alt text-green-400',
+                defaultSize: { w: 4, h: 4 },
+                minSize: { w: 3, h: 3 },
+                content: () => `
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="text-blue-200">Tempo médio processamento</span>
+                                <span id="avgProcessingTime" class="text-green-400 font-medium">0ms</span>
+                            </div>
+                            <div class="network-bar">
+                                <div id="processingTimeBar" class="network-bar-fill bg-gradient-to-r from-green-500 to-emerald-400" style="width: 20%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="text-blue-200">Taxa de conversão links</span>
+                                <span id="linkConversionRate" class="text-blue-400 font-medium">0%</span>
+                            </div>
+                            <div class="network-bar">
+                                <div id="linkConversionBar" class="network-bar-fill bg-gradient-to-r from-blue-500 to-cyan-400" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="text-blue-200">Cache hit rate</span>
+                                <span id="cacheHitRate" class="text-purple-400 font-medium">0%</span>
+                            </div>
+                            <div class="network-bar">
+                                <div id="cacheHitBar" class="network-bar-fill bg-gradient-to-r from-purple-500 to-pink-400" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="text-blue-200">Classificação IA</span>
+                                <span id="aiClassificationRate" class="text-yellow-400 font-medium">0%</span>
+                            </div>
+                            <div class="network-bar">
+                                <div id="aiClassificationBar" class="network-bar-fill bg-gradient-to-r from-yellow-500 to-orange-400" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                `
+            },
+            'groups': {
+                title: 'Grupos Monitorados',
+                icon: 'fas fa-users text-purple-400',
+                defaultSize: { w: 4, h: 3 },
+                minSize: { w: 3, h: 3 },
+                content: () => `
+                    <div class="flex items-center justify-between mb-3">
+                        <span id="groupsCount" class="text-sm bg-purple-500/30 px-2 py-0.5 rounded-full">0 grupos</span>
+                    </div>
+                    <div id="groupsList" class="groups-list space-y-2">
+                        <div class="text-blue-300 text-sm text-center py-4">
+                            <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                            <p>Carregando...</p>
+                        </div>
+                    </div>
+                `
+            },
+            'health': {
+                title: 'Saúde do Sistema',
+                icon: 'fas fa-heartbeat text-red-400',
+                defaultSize: { w: 4, h: 4 },
+                minSize: { w: 3, h: 3 },
+                content: () => `
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="text-blue-200">Redis Cache</span>
+                                <span id="redisStatus" class="text-green-400 font-medium">Conectado</span>
+                            </div>
+                            <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+                                <div id="redisHealthBar" class="h-full w-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="text-blue-200">MySQL Database</span>
+                                <span id="mysqlStatus" class="text-green-400 font-medium">Conectado</span>
+                            </div>
+                            <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+                                <div id="mysqlHealthBar" class="h-full w-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="text-blue-200">Bot Telegram</span>
+                                <span id="botStatus" class="text-green-400 font-medium">Ativo</span>
+                            </div>
+                            <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+                                <div id="botHealthBar" class="h-full w-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="text-blue-200">Puppeteer</span>
+                                <span id="puppeteerStatus" class="text-green-400 font-medium">Pronto</span>
+                            </div>
+                            <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+                                <div id="puppeteerHealthBar" class="h-full w-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full"></div>
+                            </div>
+                        </div>
+                        <div class="pt-2 border-t border-white/10">
+                            <div class="flex justify-between text-sm">
+                                <span class="text-blue-200">WebSocket</span>
+                                <span id="wsStatusText" class="text-gray-400">Conectando...</span>
+                            </div>
+                        </div>
+                    </div>
+                `
+            },
+            'sources': {
+                title: 'Distribuição por Loja',
+                icon: 'fas fa-store text-orange-400',
+                defaultSize: { w: 4, h: 4 },
+                minSize: { w: 3, h: 3 },
+                content: () => `
+                    <div class="space-y-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <span class="text-xs font-bold">ML</span>
+                            </div>
+                            <div class="flex-1">
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="text-blue-200">Mercado Livre</span>
+                                    <span id="sourceMl" class="text-yellow-400 font-medium">0</span>
+                                </div>
+                                <div class="network-bar">
+                                    <div id="sourceMlBar" class="network-bar-fill bg-gradient-to-r from-yellow-500 to-yellow-400" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <i class="fas fa-shopping-bag text-xs"></i>
+                            </div>
+                            <div class="flex-1">
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="text-blue-200">Shopee</span>
+                                    <span id="sourceShopee" class="text-orange-400 font-medium">0</span>
+                                </div>
+                                <div class="network-bar">
+                                    <div id="sourceShopeeBar" class="network-bar-fill bg-gradient-to-r from-orange-500 to-red-400" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 bg-gradient-to-br from-orange-600 to-orange-700 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <i class="fab fa-amazon text-xs"></i>
+                            </div>
+                            <div class="flex-1">
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="text-blue-200">Amazon</span>
+                                    <span id="sourceAmazon" class="text-orange-400 font-medium">0</span>
+                                </div>
+                                <div class="network-bar">
+                                    <div id="sourceAmazonBar" class="network-bar-fill bg-gradient-to-r from-orange-600 to-orange-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <span class="text-xs font-bold">AE</span>
+                            </div>
+                            <div class="flex-1">
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="text-blue-200">AliExpress</span>
+                                    <span id="sourceAli" class="text-red-400 font-medium">0</span>
+                                </div>
+                                <div class="network-bar">
+                                    <div id="sourceAliBar" class="network-bar-fill bg-gradient-to-r from-red-500 to-red-400" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `
+            },
+            'activity': {
+                title: 'Atividade Recente',
+                icon: 'fas fa-history text-cyan-400',
+                defaultSize: { w: 6, h: 4 },
+                minSize: { w: 4, h: 3 },
+                content: () => `
+                    <div class="flex items-center justify-between mb-3">
+                        <button onclick="clearActivityLog()" class="text-xs text-blue-300 hover:text-white transition-colors">
+                            <i class="fas fa-trash mr-1"></i>Limpar
+                        </button>
+                    </div>
+                    <div id="activityLog" class="activity-log space-y-2">
+                        <div class="text-blue-300 text-sm text-center py-8">
+                            <i class="fas fa-inbox text-3xl mb-2 opacity-50"></i>
+                            <p>Aguardando atividades...</p>
+                        </div>
+                    </div>
+                `
+            },
+            'lastsent': {
+                title: 'Últimas Enviadas',
+                icon: 'fas fa-paper-plane text-green-400',
+                defaultSize: { w: 6, h: 4 },
+                minSize: { w: 4, h: 3 },
+                content: () => `
+                    <div class="flex items-center justify-between mb-3">
+                        <button onclick="refreshLastSent()" class="text-xs text-blue-300 hover:text-white transition-colors">
+                            <i class="fas fa-sync-alt mr-1"></i>Atualizar
+                        </button>
+                    </div>
+                    <div id="lastSentList" class="space-y-3 max-h-64 overflow-y-auto">
+                        <div class="text-blue-300 text-sm text-center py-8">
+                            <i class="fas fa-spinner fa-spin text-3xl mb-2"></i>
+                            <p>Carregando...</p>
+                        </div>
+                    </div>
+                `
+            },
+            'apis': {
+                title: 'Status das APIs',
+                icon: 'fas fa-plug text-blue-400',
+                defaultSize: { w: 12, h: 2 },
+                minSize: { w: 6, h: 1 },
+                content: () => `
+                    <div class="flex items-center justify-center gap-6 flex-wrap">
+                        <div class="flex items-center gap-2" title="Shopee API">
+                            <span class="status-dot online" id="status-shopee"></span>
+                            <span class="text-sm text-blue-100">Shopee</span>
+                            <span id="latency-shopee" class="text-xs text-blue-300"></span>
+                        </div>
+                        <div class="flex items-center gap-2" title="Mercado Livre">
+                            <span class="status-dot online" id="status-ml"></span>
+                            <span class="text-sm text-blue-100">ML</span>
+                            <span id="latency-ml" class="text-xs text-blue-300"></span>
+                        </div>
+                        <div class="flex items-center gap-2" title="AliExpress">
+                            <span class="status-dot online" id="status-ali"></span>
+                            <span class="text-sm text-blue-100">AliExpress</span>
+                            <span id="latency-ali" class="text-xs text-blue-300"></span>
+                        </div>
+                        <div class="flex items-center gap-2" title="Amazon">
+                            <span class="status-dot online" id="status-amazon"></span>
+                            <span class="text-sm text-blue-100">Amazon</span>
+                            <span id="latency-amazon" class="text-xs text-blue-300"></span>
+                        </div>
+                        <div class="flex items-center gap-2" title="Google Gemini IA">
+                            <span class="status-dot online" id="status-ai"></span>
+                            <span class="text-sm text-blue-100">IA</span>
+                            <span id="latency-ai" class="text-xs text-blue-300"></span>
+                        </div>
+                    </div>
+                `
+            }
+        };
+        
+        // Default layout
+        const defaultLayout = [
+            { id: 'apis', x: 0, y: 0, w: 12, h: 2 },
+            { id: 'telegram', x: 0, y: 2, w: 3, h: 2 },
+            { id: 'bot', x: 3, y: 2, w: 3, h: 2 },
+            { id: 'pending', x: 6, y: 2, w: 3, h: 2 },
+            { id: 'errors', x: 9, y: 2, w: 3, h: 2 },
+            { id: 'queue', x: 0, y: 4, w: 6, h: 4 },
+            { id: 'ratelimit', x: 6, y: 4, w: 6, h: 4 },
+            { id: 'stats', x: 0, y: 8, w: 4, h: 4 },
+            { id: 'hourly', x: 4, y: 8, w: 4, h: 3 },
+            { id: 'performance', x: 8, y: 8, w: 4, h: 4 },
+            { id: 'groups', x: 0, y: 12, w: 4, h: 3 },
+            { id: 'health', x: 4, y: 11, w: 4, h: 4 },
+            { id: 'sources', x: 8, y: 12, w: 4, h: 4 },
+            { id: 'activity', x: 0, y: 15, w: 6, h: 4 },
+            { id: 'lastsent', x: 6, y: 15, w: 6, h: 4 }
+        ];
+        
         // Global state
+        let grid = null;
         let ws = null;
         let wsReconnectAttempts = 0;
-        let sidebarOpen = false;
         let activityLog = [];
         let hourlyChart = null;
         let serverStartTime = Date.now();
+        let isLocked = false;
         const MAX_ACTIVITY_LOG = 50;
-
+        const STORAGE_KEY = 'monitor_layout_v4';
+        const VISIBLE_KEY = 'monitor_visible_widgets_v4';
+        
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
+            initGrid();
             initWebSocket();
             updateClock();
             setInterval(updateClock, 1000);
             
-            initHourlyChart();
             loadInitialData();
             
             // Refresh data periodically
@@ -822,16 +924,246 @@
             setInterval(loadApiStatus, 60000);
             setInterval(loadSystemHealth, 30000);
             setInterval(updateUptime, 1000);
+            
+            // Event listeners
+            document.getElementById('openSettings').addEventListener('click', openSettings);
+            document.getElementById('closeSettings').addEventListener('click', closeSettings);
+            document.getElementById('settingsOverlay').addEventListener('click', closeSettings);
+            document.getElementById('toggleLock').addEventListener('click', toggleLock);
+            document.getElementById('resetLayout').addEventListener('click', resetToDefault);
         });
-
-        // Sidebar toggle
-        document.getElementById('sidebarToggle').addEventListener('click', () => {
-            sidebarOpen = !sidebarOpen;
-            document.getElementById('sidebar').classList.toggle('open', sidebarOpen);
-            document.getElementById('mainContent').classList.toggle('sidebar-open', sidebarOpen);
-            document.getElementById('sidebarToggle').classList.toggle('sidebar-open', sidebarOpen);
-        });
-
+        
+        // Grid initialization
+        function initGrid() {
+            const savedLayout = localStorage.getItem(STORAGE_KEY);
+            const savedVisible = localStorage.getItem(VISIBLE_KEY);
+            
+            let layout = defaultLayout;
+            let visibleWidgets = Object.keys(widgetDefinitions);
+            
+            if (savedLayout) {
+                try {
+                    layout = JSON.parse(savedLayout);
+                } catch (e) {
+                    console.warn('Invalid saved layout, using default');
+                }
+            }
+            
+            if (savedVisible) {
+                try {
+                    visibleWidgets = JSON.parse(savedVisible);
+                } catch (e) {
+                    console.warn('Invalid saved visibility, showing all');
+                }
+            }
+            
+            grid = GridStack.init({
+                column: 12,
+                cellHeight: 80,
+                margin: 8,
+                float: false,
+                animate: true,
+                disableOneColumnMode: true,
+                draggable: {
+                    handle: '.widget-header'
+                },
+                resizable: {
+                    handles: 'e, se, s, sw, w'
+                }
+            });
+            
+            // Add widgets in batch mode to preserve positions
+            grid.batchUpdate();
+            layout.forEach(item => {
+                if (visibleWidgets.includes(item.id)) {
+                    addWidget(item.id, item.x, item.y, item.w, item.h);
+                }
+            });
+            grid.commit();
+            
+            // Save on change
+            grid.on('change', saveLayout);
+            
+            // Initialize hourly chart after grid is set up
+            setTimeout(initHourlyChart, 500);
+            
+            // Update widget toggles
+            updateWidgetToggles();
+        }
+        
+        function addWidget(id, x, y, w, h) {
+            const def = widgetDefinitions[id];
+            if (!def) return;
+            
+            const widget = grid.addWidget({
+                x: x,
+                y: y,
+                w: w || def.defaultSize.w,
+                h: h || def.defaultSize.h,
+                minW: def.minSize.w,
+                minH: def.minSize.h,
+                id: id,
+                content: `
+                    <div class="gs-item-content">
+                        <div class="widget-header">
+                            <h3><i class="${def.icon}"></i>${def.title}</h3>
+                            <div class="widget-controls">
+                                <button onclick="removeWidget('${id}')" title="Remover widget">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="widget-body">
+                            ${def.content()}
+                        </div>
+                    </div>
+                `
+            });
+            
+            return widget;
+        }
+        
+        function removeWidget(id) {
+            const items = grid.getGridItems();
+            const item = items.find(el => el.gridstackNode?.id === id);
+            if (item) {
+                grid.removeWidget(item);
+                saveLayout();
+                updateWidgetToggles();
+                showToast(`Widget "${widgetDefinitions[id]?.title}" removido`, 'info');
+            }
+        }
+        
+        function toggleWidget(id) {
+            const items = grid.getGridItems();
+            const exists = items.find(el => el.gridstackNode?.id === id);
+            
+            if (exists) {
+                removeWidget(id);
+            } else {
+                const def = widgetDefinitions[id];
+                // Find empty space
+                const y = Math.max(...items.map(el => (el.gridstackNode?.y || 0) + (el.gridstackNode?.h || 0)), 0);
+                addWidget(id, 0, y, def.defaultSize.w, def.defaultSize.h);
+                showToast(`Widget "${def.title}" adicionado`, 'success');
+                
+                // Reinit chart if hourly widget was added
+                if (id === 'hourly') {
+                    setTimeout(initHourlyChart, 300);
+                }
+            }
+            
+            saveLayout();
+            updateWidgetToggles();
+        }
+        
+        function saveLayout() {
+            const items = grid.getGridItems();
+            const layout = items.map(el => ({
+                id: el.gridstackNode.id,
+                x: el.gridstackNode.x,
+                y: el.gridstackNode.y,
+                w: el.gridstackNode.w,
+                h: el.gridstackNode.h
+            }));
+            
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
+            localStorage.setItem(VISIBLE_KEY, JSON.stringify(layout.map(l => l.id)));
+        }
+        
+        function resetToDefault() {
+            if (!confirm('Restaurar o layout padrão? Suas personalizações serão perdidas.')) return;
+            
+            localStorage.removeItem(STORAGE_KEY);
+            localStorage.removeItem(VISIBLE_KEY);
+            location.reload();
+        }
+        
+        function exportLayout() {
+            const items = grid.getGridItems();
+            const layout = items.map(el => ({
+                id: el.gridstackNode.id,
+                x: el.gridstackNode.x,
+                y: el.gridstackNode.y,
+                w: el.gridstackNode.w,
+                h: el.gridstackNode.h
+            }));
+            
+            const blob = new Blob([JSON.stringify(layout, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'monitor-layout.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('Layout exportado!', 'success');
+        }
+        
+        function importLayout(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const layout = JSON.parse(e.target.result);
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
+                    localStorage.setItem(VISIBLE_KEY, JSON.stringify(layout.map(l => l.id)));
+                    location.reload();
+                } catch (err) {
+                    showToast('Erro ao importar layout', 'error');
+                }
+            };
+            reader.readAsText(file);
+        }
+        
+        function toggleLock() {
+            isLocked = !isLocked;
+            const btn = document.getElementById('toggleLock');
+            const gridEl = document.getElementById('grid');
+            
+            if (isLocked) {
+                grid.disable();
+                gridEl.classList.add('locked');
+                btn.innerHTML = '<i class="fas fa-lock text-red-400"></i>';
+                showToast('Layout bloqueado', 'info');
+            } else {
+                grid.enable();
+                gridEl.classList.remove('locked');
+                btn.innerHTML = '<i class="fas fa-unlock text-green-400"></i>';
+                showToast('Layout desbloqueado - arraste para mover', 'info');
+            }
+        }
+        
+        function updateWidgetToggles() {
+            const container = document.getElementById('widgetToggles');
+            const items = grid.getGridItems();
+            const activeIds = items.map(el => el.gridstackNode?.id);
+            
+            container.innerHTML = Object.entries(widgetDefinitions).map(([id, def]) => {
+                const isActive = activeIds.includes(id);
+                return `
+                    <div class="widget-toggle" onclick="toggleWidget('${id}')">
+                        <div class="flex items-center gap-3">
+                            <i class="${def.icon}"></i>
+                            <span>${def.title}</span>
+                        </div>
+                        <div class="toggle-switch ${isActive ? 'active' : ''}"></div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function openSettings() {
+            document.getElementById('settingsPanel').classList.add('open');
+            document.getElementById('settingsOverlay').classList.add('open');
+        }
+        
+        function closeSettings() {
+            document.getElementById('settingsPanel').classList.remove('open');
+            document.getElementById('settingsOverlay').classList.remove('open');
+        }
+        
         // Toast notification
         function showToast(message, type = 'info') {
             const container = document.getElementById('toastContainer');
@@ -851,17 +1183,25 @@
                 info: 'fa-info-circle'
             };
             
-            toast.className = `toast ${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3`;
+            toast.className = `${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3`;
             toast.innerHTML = `<i class="fas ${icons[type]}"></i><span>${message}</span>`;
             
             container.appendChild(toast);
             
             setTimeout(() => {
-                toast.style.animation = 'slideIn 0.3s ease-out reverse forwards';
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100px)';
+                toast.style.transition = 'all 0.3s';
                 setTimeout(() => toast.remove(), 300);
-            }, 4000);
+            }, 3000);
         }
-
+        
+        // Clock
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('currentTime').textContent = now.toLocaleTimeString('pt-BR');
+        }
+        
         // WebSocket
         function initWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -902,22 +1242,27 @@
                 }
             }, 30000);
         }
-
+        
         function updateWsStatus(connected) {
-            const el = document.getElementById('wsStatus');
-            const text = document.getElementById('wsStatusText');
-            
-            if (connected) {
-                el.innerHTML = '<div class="status-dot online"></div><span class="text-sm text-green-400 font-medium">Conectado</span>';
-                if (text) text.textContent = 'Conectado';
-                if (text) text.className = 'text-green-400 font-medium';
-            } else {
-                el.innerHTML = '<div class="status-dot offline"></div><span class="text-sm text-red-400 font-medium">Desconectado</span>';
-                if (text) text.textContent = 'Desconectado';
-                if (text) text.className = 'text-red-400 font-medium';
+            const statusEl = document.getElementById('wsStatus');
+            const wsStatusText = document.getElementById('wsStatusText');
+            if (statusEl) {
+                const dot = statusEl.querySelector('.status-dot');
+                const text = statusEl.querySelector('span:last-child');
+                if (connected) {
+                    dot.className = 'status-dot online';
+                    text.textContent = 'Conectado';
+                } else {
+                    dot.className = 'status-dot offline';
+                    text.textContent = 'Desconectado';
+                }
+            }
+            if (wsStatusText) {
+                wsStatusText.textContent = connected ? 'Conectado' : 'Desconectado';
+                wsStatusText.className = connected ? 'text-green-400' : 'text-red-400';
             }
         }
-
+        
         function handleWebSocketMessage(message) {
             switch (message.type) {
                 case 'queue_status_update':
@@ -927,148 +1272,87 @@
                     updateRateLimitDisplay(message.data);
                     break;
                 case 'pending_count_update':
-                    document.getElementById('pendingCount').textContent = message.data.count || 0;
-                    if (message.data.count > 0) {
-                        addActivity('Promoções', `${message.data.count} promoções pendentes`, 'warning');
-                    }
-                    break;
-                case 'new_pending_promotion':
-                    addActivity('Nova Promoção', message.data.product_name || 'Produto detectado', 'info');
-                    loadPendingCount();
-                    break;
-                case 'no_affiliate_count_update':
-                    document.getElementById('noAffiliateCount').textContent = `${message.data.count || 0} sem afiliado`;
-                    break;
-                case 'connection_status':
-                    handleConnectionStatus(message);
+                    const pendingEl = document.getElementById('pendingCount');
+                    if (pendingEl) pendingEl.textContent = message.data.count || 0;
                     break;
                 case 'promotion_sent':
-                    addActivity('Enviada', message.data?.product_name || 'Promoção enviada com sucesso', 'success');
-                    refreshLastSent();
+                    addActivity('Promoção', `Enviada: ${message.data.product || 'Produto'}`, 'success');
                     loadStats();
                     break;
-                case 'pong':
+                case 'new_pending_promotion':
+                    addActivity('Pendente', `Nova promoção de ${message.data.source || 'origem desconhecida'}`, 'warning');
+                    loadPendingCount();
                     break;
-            }
-            
-            updateLastUpdate();
-        }
-
-        function handleConnectionStatus(message) {
-            const card = document.getElementById('telegramCard');
-            const status = document.getElementById('telegramStatus');
-            
-            switch (message.status) {
-                case 'connected':
-                    card.className = 'glass-card card-gradient-green rounded-xl p-5';
-                    status.innerHTML = '<div class="status-dot online"></div><span class="text-sm text-green-400 font-medium">Conectado</span>';
-                    addActivity('Telegram', 'Reconectado com sucesso', 'success');
-                    loadTelegramStatus();
+                case 'telegram_status':
+                    updateTelegramDisplay(message.data);
                     break;
-                case 'disconnected':
-                    card.className = 'glass-card card-gradient-red rounded-xl p-5';
-                    status.innerHTML = '<div class="status-dot offline"></div><span class="text-sm text-red-400 font-medium">Desconectado</span>';
-                    addActivity('Telegram', 'Conexão perdida', 'error');
-                    break;
-                case 'reconnecting':
-                    card.className = 'glass-card card-gradient-yellow rounded-xl p-5';
-                    status.innerHTML = '<div class="status-dot warning"></div><span class="text-sm text-yellow-400 font-medium">Reconectando...</span>';
-                    addActivity('Telegram', `Tentativa ${message.attempt}/${message.maxAttempts}`, 'warning');
-                    break;
-                case 'failed':
-                    card.className = 'glass-card card-gradient-red rounded-xl p-5';
-                    status.innerHTML = '<div class="status-dot offline"></div><span class="text-sm text-red-500 font-medium">Falhou</span>';
-                    addActivity('Telegram', 'Falha na reconexão', 'error');
-                    showToast('Falha na conexão Telegram - Reconectar manualmente', 'error');
+                case 'error':
+                    addActivity('Erro', message.data.message || 'Erro desconhecido', 'error');
                     break;
             }
         }
-
-        // Activity Log
-        function addActivity(source, message, type = 'info') {
-            const now = new Date();
-            const time = now.toLocaleTimeString('pt-BR');
+        
+        // Activity log
+        function addActivity(category, message, type = 'info') {
+            const log = document.getElementById('activityLog');
+            if (!log) return;
             
-            activityLog.unshift({ source, message, type, time });
-            if (activityLog.length > MAX_ACTIVITY_LOG) {
-                activityLog.pop();
+            const colors = {
+                success: 'border-green-500 bg-green-500/10',
+                error: 'border-red-500 bg-red-500/10',
+                warning: 'border-yellow-500 bg-yellow-500/10',
+                info: 'border-blue-500 bg-blue-500/10'
+            };
+            
+            const icons = {
+                success: 'fa-check text-green-400',
+                error: 'fa-times text-red-400',
+                warning: 'fa-exclamation text-yellow-400',
+                info: 'fa-info text-blue-400'
+            };
+            
+            const now = new Date().toLocaleTimeString('pt-BR');
+            
+            const entry = document.createElement('div');
+            entry.className = `border-l-2 ${colors[type]} pl-3 py-2 rounded-r`;
+            entry.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <i class="fas ${icons[type]} text-xs"></i>
+                    <span class="text-xs text-blue-300">${now}</span>
+                    <span class="text-xs font-medium text-blue-100">${category}</span>
+                </div>
+                <p class="text-sm text-white mt-1">${message}</p>
+            `;
+            
+            // Remove placeholder if exists
+            const placeholder = log.querySelector('.text-center');
+            if (placeholder) placeholder.remove();
+            
+            log.insertBefore(entry, log.firstChild);
+            
+            // Limit log size
+            while (log.children.length > MAX_ACTIVITY_LOG) {
+                log.removeChild(log.lastChild);
             }
             
-            renderActivityLog();
+            activityLog.unshift({ category, message, type, time: now });
+            if (activityLog.length > MAX_ACTIVITY_LOG) activityLog.pop();
         }
-
-        function renderActivityLog() {
-            const container = document.getElementById('activityLog');
-            
-            if (activityLog.length === 0) {
-                container.innerHTML = `
+        
+        function clearActivityLog() {
+            const log = document.getElementById('activityLog');
+            if (log) {
+                log.innerHTML = `
                     <div class="text-blue-300 text-sm text-center py-8">
                         <i class="fas fa-inbox text-3xl mb-2 opacity-50"></i>
                         <p>Aguardando atividades...</p>
                     </div>
                 `;
-                return;
             }
-            
-            container.innerHTML = activityLog.map(item => {
-                const colors = {
-                    success: 'border-green-500 bg-green-500/10',
-                    error: 'border-red-500 bg-red-500/10',
-                    warning: 'border-yellow-500 bg-yellow-500/10',
-                    info: 'border-blue-500 bg-blue-500/10'
-                };
-                const icons = {
-                    success: 'fa-check-circle text-green-400',
-                    error: 'fa-times-circle text-red-400',
-                    warning: 'fa-exclamation-triangle text-yellow-400',
-                    info: 'fa-info-circle text-blue-400'
-                };
-                
-                return `
-                    <div class="border-l-2 ${colors[item.type]} rounded-r-lg p-3 flex items-center gap-3">
-                        <i class="fas ${icons[item.type]}"></i>
-                        <div class="flex-1 min-w-0">
-                            <p class="text-sm font-medium truncate">${item.message}</p>
-                            <p class="text-xs text-blue-300">${item.source}</p>
-                        </div>
-                        <span class="text-xs text-blue-400 whitespace-nowrap">${item.time}</span>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function clearActivityLog() {
             activityLog = [];
-            renderActivityLog();
-            showToast('Log limpo', 'info');
         }
-
-        // Clock
-        function updateClock() {
-            const now = new Date();
-            document.getElementById('currentTime').textContent = now.toLocaleTimeString('pt-BR');
-            document.getElementById('currentDate').textContent = now.toLocaleDateString('pt-BR');
-        }
-
-        function updateLastUpdate() {
-            const now = new Date();
-            document.getElementById('lastUpdate').textContent = now.toLocaleTimeString('pt-BR');
-        }
-
-        // Format time helper
-        function formatTime(seconds) {
-            if (seconds <= 0) return '0s';
-            
-            const mins = Math.floor(seconds / 60);
-            const secs = Math.floor(seconds % 60);
-            
-            if (mins > 0) {
-                return `${mins}m ${secs}s`;
-            }
-            return `${secs}s`;
-        }
-
-        // API Calls
+        
+        // Data loading functions
         async function loadInitialData() {
             await Promise.all([
                 loadQueueStatus(),
@@ -1082,7 +1366,6 @@
                 loadSystemHealth()
             ]);
             
-            // Initialize uptime from server if available
             try {
                 const res = await fetch('/api/system/info');
                 if (res.ok) {
@@ -1094,70 +1377,6 @@
             } catch (e) {}
         }
         
-        // Load system health
-        async function loadSystemHealth() {
-            try {
-                const res = await fetch('/api/monitor/health');
-                if (res.ok) {
-                    const data = await res.json();
-                    
-                    // Redis
-                    const redisStatus = document.getElementById('redisStatus');
-                    const redisBar = document.getElementById('redisHealthBar');
-                    if (data.redis?.status === 'online') {
-                        if (redisStatus) redisStatus.textContent = `Conectado (${data.redis.latency}ms)`;
-                        if (redisStatus) redisStatus.className = 'text-green-400 font-medium';
-                        if (redisBar) redisBar.className = 'h-full w-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full';
-                    } else {
-                        if (redisStatus) redisStatus.textContent = 'Desconectado';
-                        if (redisStatus) redisStatus.className = 'text-red-400 font-medium';
-                        if (redisBar) redisBar.className = 'h-full w-1/4 bg-gradient-to-r from-red-500 to-red-400 rounded-full';
-                    }
-                    
-                    // MySQL
-                    const mysqlStatus = document.getElementById('mysqlStatus');
-                    const mysqlBar = document.getElementById('mysqlHealthBar');
-                    if (data.mysql?.status === 'online') {
-                        if (mysqlStatus) mysqlStatus.textContent = `Conectado (${data.mysql.latency}ms)`;
-                        if (mysqlStatus) mysqlStatus.className = 'text-green-400 font-medium';
-                        if (mysqlBar) mysqlBar.className = 'h-full w-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full';
-                    } else {
-                        if (mysqlStatus) mysqlStatus.textContent = 'Desconectado';
-                        if (mysqlStatus) mysqlStatus.className = 'text-red-400 font-medium';
-                        if (mysqlBar) mysqlBar.className = 'h-full w-1/4 bg-gradient-to-r from-red-500 to-red-400 rounded-full';
-                    }
-                    
-                    // Bot
-                    const botStatus = document.getElementById('botStatus');
-                    const botBar = document.getElementById('botHealthBar');
-                    if (data.bot?.status === 'online') {
-                        if (botStatus) botStatus.textContent = 'Ativo';
-                        if (botStatus) botStatus.className = 'text-green-400 font-medium';
-                        if (botBar) botBar.className = 'h-full w-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full';
-                    } else {
-                        if (botStatus) botStatus.textContent = 'Inativo';
-                        if (botStatus) botStatus.className = 'text-yellow-400 font-medium';
-                        if (botBar) botBar.className = 'h-full w-1/2 bg-gradient-to-r from-yellow-500 to-yellow-400 rounded-full';
-                    }
-                    
-                    // Puppeteer
-                    const puppeteerStatus = document.getElementById('puppeteerStatus');
-                    const puppeteerBar = document.getElementById('puppeteerHealthBar');
-                    if (data.puppeteer?.status === 'online') {
-                        if (puppeteerStatus) puppeteerStatus.textContent = 'Pronto';
-                        if (puppeteerStatus) puppeteerStatus.className = 'text-green-400 font-medium';
-                        if (puppeteerBar) puppeteerBar.className = 'h-full w-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full';
-                    } else {
-                        if (puppeteerStatus) puppeteerStatus.textContent = 'Indisponível';
-                        if (puppeteerStatus) puppeteerStatus.className = 'text-red-400 font-medium';
-                        if (puppeteerBar) puppeteerBar.className = 'h-full w-1/4 bg-gradient-to-r from-red-500 to-red-400 rounded-full';
-                    }
-                }
-            } catch (err) {
-                console.debug('Health check not available');
-            }
-        }
-
         async function loadQueueStatus() {
             try {
                 const res = await fetch('/api/queue/status');
@@ -1167,278 +1386,272 @@
                     updateQueueDisplay(data);
                 }
             } catch (err) {
-                console.error('Error loading queue status:', err);
+                console.debug('Queue status not available');
             }
         }
-
+        
+        function updateQueueDisplay(data) {
+            const length = data.queueLength || data.length || 0;
+            const lengthEl = document.getElementById('queueLength');
+            if (lengthEl) lengthEl.textContent = length;
+            
+            const badge = document.getElementById('queueStatusBadge');
+            const progressBar = document.getElementById('queueProgressBar');
+            const etaValue = document.getElementById('queueEtaValue');
+            const etaText = document.getElementById('queueEta');
+            const delayEl = document.getElementById('queueDelay');
+            const avgWaitEl = document.getElementById('queueAvgWait');
+            
+            if (delayEl) delayEl.textContent = data.promotionDelay || data.delay || 10;
+            if (avgWaitEl) avgWaitEl.textContent = Math.round(data.avgWaitTimeSeconds || 0);
+            
+            const isProcessing = data.isProcessing || data.processing || false;
+            const eta = data.estimatedTimeSeconds || data.estimatedTime || 0;
+            
+            if (badge) {
+                if (length === 0) {
+                    badge.className = 'px-3 py-1 rounded-full bg-gray-600/50 text-xs font-medium';
+                    badge.textContent = 'Idle';
+                } else if (isProcessing) {
+                    badge.className = 'px-3 py-1 rounded-full bg-green-600/50 text-xs font-medium';
+                    badge.textContent = 'Processando';
+                } else {
+                    badge.className = 'px-3 py-1 rounded-full bg-yellow-600/50 text-xs font-medium';
+                    badge.textContent = 'Aguardando';
+                }
+            }
+            
+            if (etaValue) etaValue.textContent = formatTime(eta);
+            if (etaText) etaText.textContent = length > 0 ? `⏱️ ${formatTime(eta)} para processar` : 'Fila vazia';
+            
+            const maxQueueForProgress = 20;
+            const progress = Math.min((length / maxQueueForProgress) * 100, 100);
+            if (progressBar) progressBar.style.width = `${progress}%`;
+        }
+        
         async function loadRateLimitStatus() {
             try {
                 const res = await fetch('/api/rate-limit/status');
                 if (res.ok) {
-                    const data = await res.json();
+                    const response = await res.json();
+                    const data = response.data || response;
                     updateRateLimitDisplay(data);
                 }
             } catch (err) {
-                console.error('Error loading rate limit:', err);
+                console.debug('Rate limit status not available');
             }
         }
-
+        
+        function updateRateLimitDisplay(data) {
+            const current = data.current || 0;
+            const max = data.maxMessages || data.max || 5;
+            const remaining = data.remaining || (max - current);
+            const window = data.timeWindowSeconds || data.windowSeconds || 60;
+            const canSend = data.canSend !== false;
+            const timeUntilNext = data.timeUntilNext || 0;
+            
+            const currentEl = document.getElementById('rateCurrent');
+            const maxEl = document.getElementById('rateMax');
+            const remainingEl = document.getElementById('rateRemaining');
+            const windowEl = document.getElementById('rateWindow');
+            const cooldownEl = document.getElementById('rateCooldown');
+            const cooldownValueEl = document.getElementById('rateCooldownValue');
+            const progressEl = document.getElementById('rateProgress');
+            const statusEl = document.getElementById('rateLimitStatus');
+            const statusTextEl = document.getElementById('rateStatusText');
+            
+            if (currentEl) currentEl.textContent = current;
+            if (maxEl) maxEl.textContent = max;
+            if (remainingEl) remainingEl.textContent = remaining;
+            if (windowEl) windowEl.textContent = window;
+            
+            const usagePercent = (current / max) * 100;
+            if (progressEl) {
+                progressEl.style.width = `${usagePercent}%`;
+                if (usagePercent >= 80) {
+                    progressEl.className = 'h-full bg-gradient-to-r from-red-500 to-red-400 rounded-full transition-all duration-500';
+                } else if (usagePercent >= 50) {
+                    progressEl.className = 'h-full bg-gradient-to-r from-yellow-500 to-orange-400 rounded-full transition-all duration-500';
+                } else {
+                    progressEl.className = 'h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full transition-all duration-500';
+                }
+            }
+            
+            if (statusEl) {
+                const dot = statusEl.querySelector('.status-dot');
+                const text = statusEl.querySelector('span');
+                if (canSend) {
+                    if (dot) dot.className = 'status-dot online';
+                    if (text) text.textContent = 'OK';
+                    if (text) text.className = 'text-sm text-green-400 font-medium';
+                } else {
+                    if (dot) dot.className = 'status-dot warning';
+                    if (text) text.textContent = 'Aguarde';
+                    if (text) text.className = 'text-sm text-yellow-400 font-medium';
+                }
+            }
+            
+            if (cooldownValueEl) cooldownValueEl.textContent = `${timeUntilNext}s`;
+            
+            if (cooldownEl) {
+                if (canSend) {
+                    cooldownEl.textContent = '✅ Pronto para enviar';
+                    cooldownEl.className = 'text-xs text-green-400 mt-3 text-center font-medium';
+                } else {
+                    cooldownEl.textContent = `⏳ Aguarde ${timeUntilNext}s`;
+                    cooldownEl.className = 'text-xs text-yellow-400 mt-3 text-center font-medium';
+                }
+            }
+            
+            if (statusTextEl) {
+                statusTextEl.textContent = canSend ? 'Disponível para enviar' : `Aguarde ${timeUntilNext}s`;
+            }
+        }
+        
         async function loadPendingCount() {
             try {
-                const res = await fetch('/api/pending-promotions');
-                if (res.ok) {
-                    const data = await res.json();
-                    const promotions = data.data || data || [];
-                    document.getElementById('pendingCount').textContent = promotions.length || 0;
+                const [pendingRes, noAffRes] = await Promise.all([
+                    fetch('/api/pending-promotions/count'),
+                    fetch('/api/no-affiliate-promotions/count')
+                ]);
+                
+                if (pendingRes.ok) {
+                    const data = await pendingRes.json();
+                    const el = document.getElementById('pendingCount');
+                    if (el) el.textContent = data.count || 0;
                 }
                 
-                const noAffRes = await fetch('/api/no-affiliate-promotions');
                 if (noAffRes.ok) {
-                    const noAffData = await noAffRes.json();
-                    const noAffPromotions = noAffData.data || noAffData || [];
-                    document.getElementById('noAffiliateCount').textContent = `${noAffPromotions.length || 0} sem afiliado`;
+                    const data = await noAffRes.json();
+                    const el = document.getElementById('noAffiliateCount');
+                    if (el) el.textContent = `${data.count || 0} sem afiliado`;
                 }
             } catch (err) {
-                console.error('Error loading pending:', err);
+                console.debug('Pending count not available');
             }
         }
-
+        
         async function loadTelegramStatus() {
             try {
-                const res = await fetch('/api/user-monitor/status');
+                const res = await fetch('/api/telegram/status');
                 if (res.ok) {
                     const data = await res.json();
-                    
-                    const card = document.getElementById('telegramCard');
-                    const status = document.getElementById('telegramStatus');
-                    const user = document.getElementById('telegramUser');
-                    const monitoring = document.getElementById('telegramMonitoring');
-                    
-                    if (data.connected) {
-                        card.className = 'glass-card card-gradient-green rounded-xl p-5';
-                        status.innerHTML = '<div class="status-dot online"></div><span class="text-sm text-green-400 font-medium">Conectado</span>';
-                        user.textContent = data.user?.firstName || 'Usuário';
-                        
-                        if (data.monitoring) {
-                            monitoring.innerHTML = '<span class="text-green-400"><i class="fas fa-eye mr-1"></i>Monitorando ativamente</span>';
-                        } else {
-                            monitoring.innerHTML = '<span class="text-yellow-400"><i class="fas fa-eye-slash mr-1"></i>Monitoramento pausado</span>';
-                        }
-                    } else {
-                        card.className = 'glass-card card-gradient-red rounded-xl p-5';
-                        status.innerHTML = '<div class="status-dot offline"></div><span class="text-sm text-red-400 font-medium">Desconectado</span>';
-                        user.textContent = 'Não conectado';
-                        monitoring.innerHTML = '<span class="text-red-300">Configure no Dashboard</span>';
-                    }
+                    updateTelegramDisplay(data);
                 }
             } catch (err) {
-                console.error('Error loading telegram status:', err);
+                console.debug('Telegram status not available');
             }
         }
-
+        
+        function updateTelegramDisplay(data) {
+            const userEl = document.getElementById('telegramUser');
+            const statusEl = document.getElementById('telegramStatus');
+            const monitoringEl = document.getElementById('telegramMonitoring');
+            
+            if (userEl) {
+                userEl.textContent = data.username || data.user || 'Não conectado';
+            }
+            
+            if (statusEl) {
+                const dot = statusEl.querySelector('.status-dot');
+                const text = statusEl.querySelector('span');
+                const isConnected = data.connected || data.isConnected;
+                if (isConnected) {
+                    if (dot) dot.className = 'status-dot online';
+                    if (text) { text.textContent = 'Conectado'; text.className = 'text-sm text-green-400 font-medium'; }
+                } else {
+                    if (dot) dot.className = 'status-dot offline';
+                    if (text) { text.textContent = 'Desconectado'; text.className = 'text-sm text-red-400 font-medium'; }
+                }
+            }
+            
+            if (monitoringEl) {
+                const count = data.monitoringCount || data.groupsMonitored || 0;
+                monitoringEl.textContent = `Monitorando ${count} grupos`;
+            }
+        }
+        
         async function loadGroups() {
             try {
                 const res = await fetch('/api/monitored');
                 if (res.ok) {
                     const groups = await res.json();
-                    const container = document.getElementById('groupsList');
+                    const listEl = document.getElementById('groupsList');
                     const countEl = document.getElementById('groupsCount');
                     
-                    if (countEl) countEl.textContent = groups?.length || 0;
+                    if (countEl) countEl.textContent = `${groups.length} grupos`;
                     
-                    if (!groups || groups.length === 0) {
-                        container.innerHTML = '<div class="text-blue-300 text-sm text-center py-4">Nenhum grupo configurado</div>';
-                        return;
+                    if (listEl && groups.length > 0) {
+                        listEl.innerHTML = groups.map(g => `
+                            <div class="flex items-center gap-2 bg-white/5 rounded-lg px-3 py-2">
+                                <div class="status-dot online"></div>
+                                <span class="text-sm truncate flex-1">${g.chat_name || g.name || g.chat_id}</span>
+                            </div>
+                        `).join('');
+                    } else if (listEl) {
+                        listEl.innerHTML = '<p class="text-sm text-blue-300 text-center">Nenhum grupo monitorado</p>';
                     }
-                    
-                    container.innerHTML = groups.map(group => `
-                        <div class="flex items-center gap-3 bg-white/5 hover:bg-white/10 rounded-lg p-3 transition-colors">
-                            <div class="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                                <i class="fas fa-users text-xs"></i>
-                            </div>
-                            <div class="flex-1 min-w-0">
-                                <p class="text-sm font-medium truncate">${group.group_name || 'Grupo'}</p>
-                                <p class="text-xs text-blue-300 truncate">${group.chat_id}</p>
-                            </div>
-                            <div class="w-2 h-2 rounded-full ${group.active !== false ? 'bg-green-500' : 'bg-gray-500'}"></div>
-                        </div>
-                    `).join('');
                 }
             } catch (err) {
-                console.error('Error loading groups:', err);
+                console.debug('Groups not available');
             }
         }
-
+        
         async function loadStats() {
             try {
                 const res = await fetch('/api/stats/today');
                 if (res.ok) {
                     const data = await res.json();
-                    const sent = data.sent || 0;
-                    const approved = data.approved || 0;
-                    const rejected = data.rejected || 0;
-                    const duplicates = data.duplicates || 0;
                     
-                    document.getElementById('statSentToday').textContent = sent;
-                    document.getElementById('statApprovedToday').textContent = approved;
-                    document.getElementById('statRejectedToday').textContent = rejected;
-                    document.getElementById('statDuplicatesToday').textContent = duplicates;
+                    const sentEl = document.getElementById('statSentToday');
+                    const approvedEl = document.getElementById('statApprovedToday');
+                    const rejectedEl = document.getElementById('statRejectedToday');
+                    const duplicatesEl = document.getElementById('statDuplicatesToday');
                     
-                    // Calculate approval rate
-                    const total = approved + rejected;
-                    const rate = total > 0 ? Math.round((approved / total) * 100) : 0;
-                    const approvalRateEl = document.getElementById('approvalRate');
-                    const approvalBarEl = document.getElementById('approvalRateBar');
-                    if (approvalRateEl) approvalRateEl.textContent = `${rate}%`;
-                    if (approvalBarEl) approvalBarEl.style.width = `${rate}%`;
+                    if (sentEl) sentEl.textContent = data.sent || 0;
+                    if (approvedEl) approvedEl.textContent = data.approved || 0;
+                    if (rejectedEl) rejectedEl.textContent = data.rejected || 0;
+                    if (duplicatesEl) duplicatesEl.textContent = data.duplicates || 0;
                     
-                    // Update source distribution
-                    updateSourceDistribution(data.bySource || {});
+                    // Approval rate
+                    const total = (data.approved || 0) + (data.rejected || 0);
+                    const rate = total > 0 ? Math.round((data.approved / total) * 100) : 0;
+                    const rateEl = document.getElementById('approvalRate');
+                    const rateBarEl = document.getElementById('approvalRateBar');
+                    if (rateEl) rateEl.textContent = `${rate}%`;
+                    if (rateBarEl) rateBarEl.style.width = `${rate}%`;
                     
-                    // Update hourly chart
-                    if (data.hourlyData && hourlyChart) {
-                        updateHourlyChart(data.hourlyData);
-                    }
+                    // Source distribution
+                    if (data.bySource) updateSourceDistribution(data.bySource);
                     
-                    // Update performance metrics
-                    updatePerformanceMetrics(sent, approved, rejected);
+                    // Hourly data
+                    if (data.hourlyData) updateHourlyChart(data.hourlyData);
+                    
+                    // Performance
+                    updatePerformanceMetrics(data.sent || 0, data.approved || 0, data.rejected || 0);
                 }
             } catch (err) {
                 console.debug('Stats not available');
             }
         }
         
-        function updateHourlyChart(hourlyData) {
-            if (!hourlyChart) return;
-            
-            hourlyChart.data.datasets[0].data = hourlyData;
-            hourlyChart.update('none');
-            
-            // Update stats
-            const max = Math.max(...hourlyData);
-            const peakHour = hourlyData.indexOf(max);
-            const avg = Math.round(hourlyData.reduce((a, b) => a + b, 0) / 24);
-            const currentHour = new Date().getHours();
-            
-            const peakHourEl = document.getElementById('peakHour');
-            const avgPerHourEl = document.getElementById('avgPerHour');
-            const currentHourCountEl = document.getElementById('currentHourCount');
-            
-            if (peakHourEl) peakHourEl.textContent = `${peakHour}:00`;
-            if (avgPerHourEl) avgPerHourEl.textContent = avg;
-            if (currentHourCountEl) currentHourCountEl.textContent = hourlyData[currentHour] || 0;
-        }
-        
-        function updatePerformanceMetrics(sent, approved, rejected) {
-            // Calculate AI classification rate (approved without manual intervention)
-            const total = approved + rejected;
-            const aiRate = total > 0 ? Math.round((approved / total) * 100) : 0;
-            
-            const aiClassificationRate = document.getElementById('aiClassificationRate');
-            const aiClassificationBar = document.getElementById('aiClassificationBar');
-            if (aiClassificationRate) aiClassificationRate.textContent = `${aiRate}%`;
-            if (aiClassificationBar) aiClassificationBar.style.width = `${aiRate}%`;
-            
-            // Estimate processing time (simulated based on sent count)
-            const avgTime = Math.max(50, 500 - (sent * 2));
-            const avgProcessingTime = document.getElementById('avgProcessingTime');
-            const processingTimeBar = document.getElementById('processingTimeBar');
-            if (avgProcessingTime) avgProcessingTime.textContent = `${avgTime}ms`;
-            if (processingTimeBar) processingTimeBar.style.width = `${Math.min(100, 100 - (avgTime / 10))}%`;
-            
-            // Link conversion rate (percentage of links that were converted to affiliate)
-            const conversionRate = sent > 0 ? Math.min(95, 70 + Math.random() * 25) : 0;
-            const linkConversionRate = document.getElementById('linkConversionRate');
-            const linkConversionBar = document.getElementById('linkConversionBar');
-            if (linkConversionRate) linkConversionRate.textContent = `${Math.round(conversionRate)}%`;
-            if (linkConversionBar) linkConversionBar.style.width = `${conversionRate}%`;
-            
-            // Cache hit rate (simulated)
-            const cacheRate = sent > 0 ? Math.min(90, 40 + Math.random() * 40) : 0;
-            const cacheHitRate = document.getElementById('cacheHitRate');
-            const cacheHitBar = document.getElementById('cacheHitBar');
-            if (cacheHitRate) cacheHitRate.textContent = `${Math.round(cacheRate)}%`;
-            if (cacheHitBar) cacheHitBar.style.width = `${cacheRate}%`;
-        }
-        
         function updateSourceDistribution(sources) {
             const total = Object.values(sources).reduce((a, b) => a + b, 0) || 1;
             
-            const mlEl = document.getElementById('sourceMl');
-            const shopeeEl = document.getElementById('sourceShopee');
-            const amazonEl = document.getElementById('sourceAmazon');
-            const aliEl = document.getElementById('sourceAli');
+            const update = (id, barId, key) => {
+                const el = document.getElementById(id);
+                const bar = document.getElementById(barId);
+                const val = sources[key] || 0;
+                if (el) el.textContent = val;
+                if (bar) bar.style.width = `${(val / total) * 100}%`;
+            };
             
-            const mlBar = document.getElementById('sourceMlBar');
-            const shopeeBar = document.getElementById('sourceShopeeBar');
-            const amazonBar = document.getElementById('sourceAmazonBar');
-            const aliBar = document.getElementById('sourceAliBar');
-            
-            if (mlEl) mlEl.textContent = sources.mercadolivre || 0;
-            if (shopeeEl) shopeeEl.textContent = sources.shopee || 0;
-            if (amazonEl) amazonEl.textContent = sources.amazon || 0;
-            if (aliEl) aliEl.textContent = sources.aliexpress || 0;
-            
-            if (mlBar) mlBar.style.width = `${((sources.mercadolivre || 0) / total) * 100}%`;
-            if (shopeeBar) shopeeBar.style.width = `${((sources.shopee || 0) / total) * 100}%`;
-            if (amazonBar) amazonBar.style.width = `${((sources.amazon || 0) / total) * 100}%`;
-            if (aliBar) aliBar.style.width = `${((sources.aliexpress || 0) / total) * 100}%`;
-        }
-
-        async function refreshLastSent() {
-            try {
-                const res = await fetch('/api/recent-sent?limit=10');
-                if (res.ok) {
-                    const promotions = await res.json();
-                    const container = document.getElementById('lastSentList');
-                    
-                    if (!promotions || promotions.length === 0) {
-                        container.innerHTML = `
-                            <div class="text-blue-300 text-sm text-center py-8">
-                                <i class="fas fa-inbox text-3xl mb-2 opacity-50"></i>
-                                <p>Nenhuma promoção enviada ainda</p>
-                            </div>
-                        `;
-                        return;
-                    }
-                    
-                    container.innerHTML = promotions.map(promo => {
-                        const time = promo.sent_at ? new Date(promo.sent_at).toLocaleTimeString('pt-BR') : '--:--';
-                        const sourceColors = {
-                            'mercadolivre': 'from-yellow-500 to-yellow-600',
-                            'amazon': 'from-orange-500 to-orange-600',
-                            'shopee': 'from-orange-600 to-red-500',
-                            'aliexpress': 'from-red-500 to-red-600',
-                            'magalu': 'from-blue-500 to-blue-600'
-                        };
-                        const color = sourceColors[promo.source?.toLowerCase()] || 'from-gray-500 to-gray-600';
-                        
-                        return `
-                            <div class="bg-white/5 hover:bg-white/10 rounded-lg p-3 transition-colors">
-                                <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 bg-gradient-to-br ${color} rounded-lg flex items-center justify-center flex-shrink-0 shadow-lg">
-                                        <i class="fas fa-tag"></i>
-                                    </div>
-                                    <div class="flex-1 min-w-0">
-                                        <p class="text-sm font-medium truncate">${promo.product_name || 'Produto'}</p>
-                                        <div class="flex items-center gap-2 text-xs text-blue-300">
-                                            <span class="capitalize">${promo.source || 'Desconhecido'}</span>
-                                            <span>•</span>
-                                            <span>${time}</span>
-                                        </div>
-                                    </div>
-                                    ${promo.price ? `<span class="text-green-400 font-semibold text-sm whitespace-nowrap">R$ ${promo.price}</span>` : ''}
-                                </div>
-                            </div>
-                        `;
-                    }).join('');
-                }
-            } catch (err) {
-                console.debug('Recent sent not available');
-            }
+            update('sourceMl', 'sourceMlBar', 'mercadolivre');
+            update('sourceShopee', 'sourceShopeeBar', 'shopee');
+            update('sourceAmazon', 'sourceAmazonBar', 'amazon');
+            update('sourceAli', 'sourceAliBar', 'aliexpress');
         }
         
-        // Hourly Chart
         function initHourlyChart() {
             const ctx = document.getElementById('hourlyChart');
             if (!ctx) return;
@@ -1461,66 +1674,175 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false }
-                    },
+                    plugins: { legend: { display: false } },
                     scales: {
-                        x: {
-                            display: false
-                        },
-                        y: {
-                            display: false,
-                            beginAtZero: true
-                        }
-                    },
-                    interaction: {
-                        intersect: false,
-                        mode: 'index'
+                        x: { display: false },
+                        y: { display: false, beginAtZero: true }
                     }
                 }
             });
         }
         
-        // API Status
+        function updateHourlyChart(hourlyData) {
+            if (!hourlyChart) return;
+            
+            hourlyChart.data.datasets[0].data = hourlyData;
+            hourlyChart.update('none');
+            
+            const max = Math.max(...hourlyData);
+            const peakHour = hourlyData.indexOf(max);
+            const avg = Math.round(hourlyData.reduce((a, b) => a + b, 0) / 24);
+            const currentHour = new Date().getHours();
+            
+            const peakEl = document.getElementById('peakHour');
+            const avgEl = document.getElementById('avgPerHour');
+            const currentEl = document.getElementById('currentHourCount');
+            
+            if (peakEl) peakEl.textContent = `${peakHour}:00`;
+            if (avgEl) avgEl.textContent = avg;
+            if (currentEl) currentEl.textContent = hourlyData[currentHour] || 0;
+        }
+        
+        function updatePerformanceMetrics(sent, approved, rejected) {
+            const total = approved + rejected;
+            const aiRate = total > 0 ? Math.round((approved / total) * 100) : 0;
+            
+            const update = (id, barId, value) => {
+                const el = document.getElementById(id);
+                const bar = document.getElementById(barId);
+                if (el) el.textContent = typeof value === 'number' && value < 1 ? `${Math.round(value * 100)}%` : value;
+                if (bar) bar.style.width = `${typeof value === 'number' && value < 1 ? value * 100 : value}%`;
+            };
+            
+            update('aiClassificationRate', 'aiClassificationBar', aiRate);
+            
+            const avgTime = Math.max(50, 500 - (sent * 2));
+            const avgEl = document.getElementById('avgProcessingTime');
+            const avgBar = document.getElementById('processingTimeBar');
+            if (avgEl) avgEl.textContent = `${avgTime}ms`;
+            if (avgBar) avgBar.style.width = `${Math.min(100, 100 - (avgTime / 10))}%`;
+            
+            const convRate = sent > 0 ? Math.min(95, 70 + Math.random() * 25) : 0;
+            const convEl = document.getElementById('linkConversionRate');
+            const convBar = document.getElementById('linkConversionBar');
+            if (convEl) convEl.textContent = `${Math.round(convRate)}%`;
+            if (convBar) convBar.style.width = `${convRate}%`;
+            
+            const cacheRate = sent > 0 ? Math.min(90, 40 + Math.random() * 40) : 0;
+            const cacheEl = document.getElementById('cacheHitRate');
+            const cacheBar = document.getElementById('cacheHitBar');
+            if (cacheEl) cacheEl.textContent = `${Math.round(cacheRate)}%`;
+            if (cacheBar) cacheBar.style.width = `${cacheRate}%`;
+        }
+        
+        async function loadSystemHealth() {
+            try {
+                const res = await fetch('/api/monitor/health');
+                if (res.ok) {
+                    const data = await res.json();
+                    
+                    const updateHealth = (statusId, barId, info) => {
+                        const statusEl = document.getElementById(statusId);
+                        const barEl = document.getElementById(barId);
+                        const isOnline = info?.status === 'online';
+                        
+                        if (statusEl) {
+                            statusEl.textContent = isOnline ? 'Conectado' : 'Offline';
+                            statusEl.className = isOnline ? 'text-green-400 font-medium' : 'text-red-400 font-medium';
+                        }
+                        if (barEl) {
+                            barEl.className = `h-full w-full bg-gradient-to-r ${isOnline ? 'from-green-500 to-emerald-400' : 'from-red-500 to-red-400'} rounded-full`;
+                        }
+                    };
+                    
+                    updateHealth('redisStatus', 'redisHealthBar', data.redis);
+                    updateHealth('mysqlStatus', 'mysqlHealthBar', data.mysql);
+                    updateHealth('botStatus', 'botHealthBar', data.bot);
+                    updateHealth('puppeteerStatus', 'puppeteerHealthBar', data.puppeteer);
+                }
+            } catch (err) {
+                console.debug('Health check not available');
+            }
+        }
+        
         async function loadApiStatus() {
             try {
                 const res = await fetch('/api/monitor/health');
                 if (res.ok) {
                     const data = await res.json();
-                    updateApiIndicator('status-shopee', 'latency-shopee', data.shopee);
-                    updateApiIndicator('status-ml', 'latency-ml', data.mercadolivre);
-                    updateApiIndicator('status-ali', 'latency-ali', data.aliexpress);
-                    updateApiIndicator('status-amazon', 'latency-amazon', data.amazon);
-                    updateApiIndicator('status-ai', 'latency-ai', data.ai);
+                    
+                    const updateApi = (id, info) => {
+                        const dot = document.getElementById(`status-${id}`);
+                        const latency = document.getElementById(`latency-${id}`);
+                        if (dot) {
+                            dot.className = `status-dot ${info?.status === 'online' ? 'online' : 'offline'}`;
+                        }
+                        if (latency && info?.latency) {
+                            latency.textContent = `${info.latency}ms`;
+                        }
+                    };
+                    
+                    updateApi('shopee', data.shopee);
+                    updateApi('ml', data.mercadolivre);
+                    updateApi('ali', data.aliexpress);
+                    updateApi('amazon', data.amazon);
+                    updateApi('ai', data.ai);
                 }
             } catch (err) {
-                // Fallback: mark all as online if health endpoint not available
-                ['shopee', 'ml', 'ali', 'amazon', 'ai'].forEach(api => {
-                    const dot = document.getElementById(`status-${api}`);
+                // Default to online
+                ['shopee', 'ml', 'ali', 'amazon', 'ai'].forEach(id => {
+                    const dot = document.getElementById(`status-${id}`);
                     if (dot) dot.className = 'status-dot online';
                 });
             }
         }
         
-        function updateApiIndicator(dotId, latencyId, apiData) {
-            const dot = document.getElementById(dotId);
-            const latency = document.getElementById(latencyId);
-            
-            if (!dot) return;
-            
-            if (apiData?.status === 'online' || apiData?.healthy !== false) {
-                dot.className = 'status-dot online';
-                if (latency && apiData?.latency) {
-                    latency.textContent = `${apiData.latency}ms`;
+        async function refreshLastSent() {
+            try {
+                const res = await fetch('/api/recent-sent?limit=10');
+                if (res.ok) {
+                    const promotions = await res.json();
+                    const container = document.getElementById('lastSentList');
+                    
+                    if (!container) return;
+                    
+                    if (!promotions || promotions.length === 0) {
+                        container.innerHTML = `
+                            <div class="text-blue-300 text-sm text-center py-8">
+                                <i class="fas fa-inbox text-3xl mb-2 opacity-50"></i>
+                                <p>Nenhuma promoção enviada ainda</p>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    container.innerHTML = promotions.map(promo => {
+                        const time = promo.sent_at ? new Date(promo.sent_at).toLocaleTimeString('pt-BR') : '--:--';
+                        return `
+                            <div class="bg-white/5 hover:bg-white/10 rounded-lg p-3 transition-colors">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                                        <i class="fas fa-tag text-xs"></i>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-sm font-medium truncate">${promo.product_name || 'Produto'}</p>
+                                        <div class="flex items-center gap-2 text-xs text-blue-300">
+                                            <span class="capitalize">${promo.source || 'Desconhecido'}</span>
+                                            <span>•</span>
+                                            <span>${time}</span>
+                                        </div>
+                                    </div>
+                                    ${promo.price ? `<span class="text-green-400 font-semibold text-sm whitespace-nowrap">${promo.price}</span>` : ''}
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
                 }
-            } else if (apiData?.status === 'degraded') {
-                dot.className = 'status-dot warning';
-            } else {
-                dot.className = 'status-dot offline';
+            } catch (err) {
+                console.debug('Recent sent not available');
             }
         }
         
-        // Uptime counter
         function updateUptime() {
             const uptimeEl = document.getElementById('botUptime');
             if (!uptimeEl) return;
@@ -1538,119 +1860,13 @@
             uptimeEl.innerHTML = `<i class="fas fa-clock mr-1"></i>Uptime: ${uptimeStr}`;
         }
         
-        // Enhanced queue display
-        function updateQueueDisplay(data) {
-            const length = data.queueLength || data.length || 0;
-            document.getElementById('queueLength').textContent = length;
-            
-            const badge = document.getElementById('queueStatusBadge');
-            const progressBar = document.getElementById('queueProgressBar');
-            const progressText = document.getElementById('queueProgressText');
-            const etaValue = document.getElementById('queueEtaValue');
-            const etaText = document.getElementById('queueEta');
-            const delayEl = document.getElementById('queueDelay');
-            const avgWaitEl = document.getElementById('queueAvgWait');
-            
-            // Update delay display
-            if (delayEl) delayEl.textContent = data.promotionDelay || data.delay || 10;
-            
-            // Update avg wait time
-            if (avgWaitEl) avgWaitEl.textContent = Math.round(data.avgWaitTimeSeconds || data.avgWait || 0);
-            
-            // Update ETA value
-            const eta = data.estimatedTimeSeconds || data.estimatedTime || 0;
-            if (etaValue) etaValue.textContent = formatTime(eta);
-            
-            const isProcessing = data.isProcessing || data.processing || false;
-            
-            if (isProcessing) {
-                if (badge) {
-                    badge.className = 'px-3 py-1 rounded-full bg-blue-500/50 text-xs font-medium animate-pulse';
-                    badge.textContent = 'Processando';
-                }
-                if (progressBar) progressBar.style.width = '100%';
-                if (progressText) progressText.textContent = 'Enviando...';
-            } else if (length > 0) {
-                if (badge) {
-                    badge.className = 'px-3 py-1 rounded-full bg-yellow-500/50 text-xs font-medium';
-                    badge.textContent = `${length} aguardando`;
-                }
-                if (progressBar) progressBar.style.width = `${Math.min(length * 10, 100)}%`;
-                if (progressText) progressText.textContent = `${length} na fila`;
-            } else {
-                if (badge) {
-                    badge.className = 'px-3 py-1 rounded-full bg-gray-600/50 text-xs font-medium';
-                    badge.textContent = 'Idle';
-                }
-                if (progressBar) progressBar.style.width = '0%';
-                if (progressText) progressText.textContent = 'Aguardando...';
-            }
-            
-            // Update ETA text
-            if (etaText) {
-                if (eta > 0) {
-                    etaText.textContent = `⏱️ Próximo envio em ~${formatTime(eta)}`;
-                } else if (length > 0) {
-                    etaText.textContent = '⚡ Processando próximo...';
-                } else {
-                    etaText.textContent = '✅ Fila vazia';
-                }
-            }
-        }
-        
-        // Enhanced rate limit display
-        function updateRateLimitDisplay(data) {
-            const current = data.current || 0;
-            const max = data.maxMessages || 5;
-            const remaining = data.remaining ?? (max - current);
-            const timeUntilNext = data.timeUntilNext || 0;
-            const window = data.timeWindowSeconds || data.windowSeconds || 60;
-            
-            // Update values
-            const currentEl = document.getElementById('rateCurrent');
-            const maxEl = document.getElementById('rateMax');
-            const windowEl = document.getElementById('rateWindow');
-            const remainingEl = document.getElementById('rateRemaining');
-            const cooldownValEl = document.getElementById('rateCooldownValue');
-            const cooldownEl = document.getElementById('rateCooldown');
-            const statusTextEl = document.getElementById('rateStatusText');
-            const progressEl = document.getElementById('rateProgress');
-            const statusEl = document.getElementById('rateLimitStatus');
-            
-            if (currentEl) currentEl.textContent = current;
-            if (maxEl) maxEl.textContent = max;
-            if (windowEl) windowEl.textContent = window;
-            if (remainingEl) remainingEl.textContent = remaining;
-            if (cooldownValEl) cooldownValEl.textContent = timeUntilNext > 0 ? formatTime(timeUntilNext) : '0s';
-            
-            const percentage = (current / max) * 100;
-            if (progressEl) progressEl.style.width = `${Math.min(percentage, 100)}%`;
-            
-            if (timeUntilNext > 0) {
-                if (progressEl) progressEl.className = 'h-full bg-gradient-to-r from-red-500 to-red-400 rounded-full transition-all duration-500';
-                if (statusTextEl) statusTextEl.textContent = 'Aguardando cooldown...';
-                if (cooldownEl) {
-                    cooldownEl.textContent = `⏳ Libera em: ${formatTime(timeUntilNext)}`;
-                    cooldownEl.className = 'text-xs text-red-400 mt-3 text-center font-medium blink-alert';
-                }
-                if (statusEl) statusEl.innerHTML = '<div class="status-dot offline"></div><span class="text-sm text-red-400 font-medium">Limite</span>';
-            } else if (remaining <= 1) {
-                if (progressEl) progressEl.className = 'h-full bg-gradient-to-r from-yellow-500 to-orange-400 rounded-full transition-all duration-500';
-                if (statusTextEl) statusTextEl.textContent = 'Quase no limite';
-                if (cooldownEl) {
-                    cooldownEl.textContent = `⚠️ Apenas ${remaining} mensagem restante`;
-                    cooldownEl.className = 'text-xs text-yellow-400 mt-3 text-center font-medium';
-                }
-                if (statusEl) statusEl.innerHTML = '<div class="status-dot warning"></div><span class="text-sm text-yellow-400 font-medium">Quase</span>';
-            } else {
-                if (progressEl) progressEl.className = 'h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full transition-all duration-500';
-                if (statusTextEl) statusTextEl.textContent = 'Disponível para enviar';
-                if (cooldownEl) {
-                    cooldownEl.textContent = `✅ ${remaining} mensagens disponíveis`;
-                    cooldownEl.className = 'text-xs text-green-400 mt-3 text-center font-medium';
-                }
-                if (statusEl) statusEl.innerHTML = '<div class="status-dot online"></div><span class="text-sm text-green-400 font-medium">OK</span>';
-            }
+        function formatTime(seconds) {
+            if (seconds < 60) return `${seconds}s`;
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            if (mins < 60) return `${mins}m ${secs}s`;
+            const hours = Math.floor(mins / 60);
+            return `${hours}h ${mins % 60}m`;
         }
     </script>
 </body>

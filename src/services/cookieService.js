@@ -20,14 +20,17 @@ const CHROME_PROFILE_DIR = path.join(__dirname, '../../data/chrome-profile');
 // Track browser instances
 let mlBrowser = null;
 let amazonBrowser = null;
+let aliexpressBrowser = null;
 
 // Cookie cache
 let cookieCache = {
     mercadolivre: null,
     amazon: null,
+    aliexpress: null,
     lastUpdated: {
         mercadolivre: null,
-        amazon: null
+        amazon: null,
+        aliexpress: null
     }
 };
 
@@ -108,6 +111,9 @@ function loadSavedCookies() {
             if (cookieCache.amazon) {
                 process.env.AMAZON_COOKIES = cookieCache.amazon;
             }
+            if (cookieCache.aliexpress) {
+                process.env.ALIEXPRESS_COOKIES = cookieCache.aliexpress;
+            }
             
             return cookieCache;
         }
@@ -135,8 +141,19 @@ function saveCookies() {
  */
 async function saveCookiesToDB(platform, cookieString) {
     try {
-        const keyName = platform === 'mercadolivre' ? 'ML_COOKIES' : 'AMAZON_COOKIES';
-        const lastUpdatedKey = platform === 'mercadolivre' ? 'ML_COOKIES_UPDATED' : 'AMAZON_COOKIES_UPDATED';
+        let keyName, lastUpdatedKey;
+        if (platform === 'mercadolivre') {
+            keyName = 'ML_COOKIES';
+            lastUpdatedKey = 'ML_COOKIES_UPDATED';
+        } else if (platform === 'amazon') {
+            keyName = 'AMAZON_COOKIES';
+            lastUpdatedKey = 'AMAZON_COOKIES_UPDATED';
+        } else if (platform === 'aliexpress') {
+            keyName = 'ALIEXPRESS_COOKIES';
+            lastUpdatedKey = 'ALIEXPRESS_COOKIES_UPDATED';
+        } else {
+            throw new Error('Plataforma desconhecida: ' + platform);
+        }
         const now = new Date().toISOString();
         
         // Check if key exists
@@ -197,7 +214,20 @@ async function loadCookiesFromDB() {
             }
         }
         
-        if (cookieCache.mercadolivre || cookieCache.amazon) {
+        // Load AliExpress cookies
+        const [aliRows] = await pool.execute('SELECT value_text FROM config WHERE key_name = ? LIMIT 1', ['ALIEXPRESS_COOKIES']);
+        if (aliRows.length > 0 && aliRows[0].value_text) {
+            cookieCache.aliexpress = aliRows[0].value_text;
+            process.env.ALIEXPRESS_COOKIES = aliRows[0].value_text;
+            
+            // Load AliExpress timestamp
+            const [aliTs] = await pool.execute('SELECT value_text FROM config WHERE key_name = ? LIMIT 1', ['ALIEXPRESS_COOKIES_UPDATED']);
+            if (aliTs.length > 0) {
+                cookieCache.lastUpdated.aliexpress = aliTs[0].value_text;
+            }
+        }
+        
+        if (cookieCache.mercadolivre || cookieCache.amazon || cookieCache.aliexpress) {
             logger.info('Cookies loaded from database');
             console.log('[CookieService] 📥 Cookies carregados do banco de dados');
         }
@@ -292,6 +322,14 @@ function getStatus() {
             browserOpen: !!amazonBrowser && amazonBrowser.isConnected(),
             cookiePreview: cookieCache.amazon 
                 ? cookieCache.amazon.substring(0, 50) + '...' 
+                : null
+        },
+        aliexpress: {
+            hasCookies: !!cookieCache.aliexpress,
+            lastUpdated: cookieCache.lastUpdated.aliexpress,
+            browserOpen: !!aliexpressBrowser && aliexpressBrowser.isConnected(),
+            cookiePreview: cookieCache.aliexpress 
+                ? cookieCache.aliexpress.substring(0, 50) + '...' 
                 : null
         }
     };
@@ -544,6 +582,135 @@ async function captureAmazonCookies() {
 }
 
 /**
+ * Start AliExpress login - opens browser for manual login
+ */
+async function startAliExpressLogin() {
+    try {
+        // Close existing browser if any
+        if (aliexpressBrowser && aliexpressBrowser.isConnected()) {
+            await aliexpressBrowser.close().catch(() => {});
+        }
+        aliexpressBrowser = null;
+        
+        console.log('[CookieService] 🚀 Abrindo navegador para AliExpress...');
+        
+        aliexpressBrowser = await launchBrowserWithProfile('aliexpress');
+        
+        const pages = await aliexpressBrowser.pages();
+        const page = pages[0] || await aliexpressBrowser.newPage();
+        
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36');
+        
+        // Anti-detection
+        await page.evaluateOnNewDocument(() => {
+            Object.defineProperty(navigator, 'webdriver', { get: () => false });
+        });
+        
+        // Navigate to AliExpress Portal (affiliate portal)
+        await page.goto('https://portals.aliexpress.com/', {
+            waitUntil: 'networkidle2',
+            timeout: 60000
+        });
+        
+        console.log('[CookieService] 📱 Navegador aberto! Faça login no Portal AliExpress...');
+        console.log('[CookieService] 💡 Seu login será mantido para a próxima vez!');
+        
+        return {
+            success: true,
+            message: 'Navegador aberto! Faça login no Portal AliExpress e depois clique em "Capturar Cookies". Seu login será mantido para a próxima vez!',
+            platform: 'aliexpress'
+        };
+        
+    } catch (err) {
+        logger.error('Error starting AliExpress login:', err.message);
+        console.error('[CookieService] ❌ Erro:', err.message);
+        aliexpressBrowser = null;
+        throw err;
+    }
+}
+
+/**
+ * Capture cookies from AliExpress after login
+ */
+async function captureAliExpressCookies() {
+    try {
+        if (!aliexpressBrowser || !aliexpressBrowser.isConnected()) {
+            aliexpressBrowser = null;
+            throw new Error('Navegador não está aberto ou foi fechado. Clique em "Abrir Navegador" primeiro.');
+        }
+        
+        const pages = await aliexpressBrowser.pages();
+        if (pages.length === 0) {
+            throw new Error('Nenhuma página aberta no navegador.');
+        }
+        
+        const page = pages[pages.length - 1];
+        
+        const currentUrl = await page.url();
+        console.log(`[CookieService] 📍 URL atual: ${currentUrl}`);
+        
+        if (!currentUrl.includes('aliexpress.com') && !currentUrl.includes('portals.aliexpress')) {
+            throw new Error('Navegue para aliexpress.com ou portals.aliexpress.com antes de capturar');
+        }
+        
+        // Get cookies from multiple domains
+        const client = await page.target().createCDPSession();
+        const { cookies: allCookies } = await client.send('Network.getAllCookies');
+        
+        // Filter for aliexpress domain cookies
+        const aliexpressCookies = allCookies.filter(c => 
+            c.domain.includes('aliexpress.com') || 
+            c.domain.includes('.aliexpress.com')
+        );
+        
+        if (aliexpressCookies.length === 0) {
+            throw new Error('Nenhum cookie encontrado. Navegue pelo site primeiro.');
+        }
+        
+        // Format cookies
+        const cookieString = aliexpressCookies.map(c => `${c.name}=${c.value}`).join('; ');
+        
+        console.log(`[CookieService] 📊 ${aliexpressCookies.length} cookies capturados do AliExpress`);
+        
+        // Save to cache and env
+        cookieCache.aliexpress = cookieString;
+        cookieCache.lastUpdated.aliexpress = new Date().toISOString();
+        process.env.ALIEXPRESS_COOKIES = cookieString;
+        
+        // Save to file and database
+        saveCookies();
+        await saveCookiesToDB('aliexpress', cookieString);
+        
+        // Close browser
+        try {
+            await aliexpressBrowser.close();
+        } catch (e) {
+            console.log('[CookieService] ⚠️ Browser já estava fechado');
+        }
+        aliexpressBrowser = null;
+        
+        console.log('[CookieService] ✅ Cookies do AliExpress salvos!');
+        
+        return {
+            success: true,
+            message: `Cookies capturados com sucesso! (${aliexpressCookies.length} cookies)`,
+            cookieCount: aliexpressCookies.length
+        };
+        
+    } catch (err) {
+        logger.error('Error capturing AliExpress cookies:', err.message);
+        // Clean up browser reference on error
+        if (aliexpressBrowser) {
+            try {
+                await aliexpressBrowser.close();
+            } catch (e) {}
+            aliexpressBrowser = null;
+        }
+        throw err;
+    }
+}
+
+/**
  * Cancel/close browser
  */
 async function cancelLogin(platform) {
@@ -570,6 +737,17 @@ async function cancelLogin(platform) {
                 console.log('[CookieService] 🔴 Navegador Amazon fechado');
             }
         }
+        if (platform === 'aliexpress') {
+            if (aliexpressBrowser) {
+                try {
+                    if (aliexpressBrowser.isConnected()) {
+                        await aliexpressBrowser.close();
+                    }
+                } catch (e) {}
+                aliexpressBrowser = null;
+                console.log('[CookieService] 🔴 Navegador AliExpress fechado');
+            }
+        }
         if (platform === 'all') {
             if (mlBrowser) { 
                 try { if (mlBrowser.isConnected()) await mlBrowser.close(); } catch (e) {}
@@ -578,6 +756,10 @@ async function cancelLogin(platform) {
             if (amazonBrowser) { 
                 try { if (amazonBrowser.isConnected()) await amazonBrowser.close(); } catch (e) {}
                 amazonBrowser = null; 
+            }
+            if (aliexpressBrowser) { 
+                try { if (aliexpressBrowser.isConnected()) await aliexpressBrowser.close(); } catch (e) {}
+                aliexpressBrowser = null; 
             }
         }
         return { success: true, message: 'Navegador fechado' };
@@ -599,6 +781,11 @@ function clearCookies(platform) {
         cookieCache.amazon = null;
         cookieCache.lastUpdated.amazon = null;
         delete process.env.AMAZON_COOKIES;
+    }
+    if (platform === 'aliexpress' || platform === 'all') {
+        cookieCache.aliexpress = null;
+        cookieCache.lastUpdated.aliexpress = null;
+        delete process.env.ALIEXPRESS_COOKIES;
     }
     saveCookies();
     return { success: true, message: 'Cookies removidos' };
@@ -637,6 +824,10 @@ async function setManualCookies(platform, cookieString) {
         cookieCache.amazon = cookieString.trim();
         cookieCache.lastUpdated.amazon = new Date().toISOString();
         process.env.AMAZON_COOKIES = cookieString.trim();
+    } else if (platform === 'aliexpress') {
+        cookieCache.aliexpress = cookieString.trim();
+        cookieCache.lastUpdated.aliexpress = new Date().toISOString();
+        process.env.ALIEXPRESS_COOKIES = cookieString.trim();
     } else {
         throw new Error('Plataforma inválida');
     }
@@ -664,6 +855,8 @@ module.exports = {
     captureMercadoLivreCookies,
     startAmazonLogin,
     captureAmazonCookies,
+    startAliExpressLogin,
+    captureAliExpressCookies,
     cancelLogin,
     clearCookies,
     clearBrowserProfile,

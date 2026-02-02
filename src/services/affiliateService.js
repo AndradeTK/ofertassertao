@@ -478,7 +478,21 @@ async function getAliExpressLink(sourceUrl) {
             }
         }
 
-        // AliExpress affiliate links usando tracking ID na URL
+        // Try to get short link via AliExpress Portal API if cookies are configured
+        const aliexpressCookies = process.env.ALIEXPRESS_COOKIES;
+        if (aliexpressCookies) {
+            try {
+                const shortUrl = await getAliExpressShortLink(productUrl, trackingId, aliexpressCookies);
+                if (shortUrl) {
+                    console.log(`[AliExpress] Short link generated: ${shortUrl}`);
+                    return shortUrl;
+                }
+            } catch (apiErr) {
+                console.warn('[AliExpress] Portal API error:', apiErr.message);
+            }
+        }
+
+        // Fallback: Add affiliate parameters to URL
         const url = new URL(productUrl);
         // Remove existing affiliate parameters
         url.searchParams.delete('aff_fcid');
@@ -493,6 +507,52 @@ async function getAliExpressLink(sourceUrl) {
     } catch (err) {
         console.error('AliExpress affiliate error:', err.message || err);
         return sourceUrl;
+    }
+}
+
+/**
+ * Generate AliExpress affiliate short link using the Portal API with cookies
+ * Uses the same endpoint as the web interface
+ */
+async function getAliExpressShortLink(originalUrl, trackingId, cookies) {
+    try {
+        // Build the API URL with query parameters
+        const apiUrl = new URL('https://portals.aliexpress.com/tools/linkGenerate/generatePromotionLinkV2.htm');
+        apiUrl.searchParams.set('shipTos', 'BR');
+        apiUrl.searchParams.set('trackId', trackingId);
+        apiUrl.searchParams.set('targetUrl', originalUrl);
+        
+        const response = await axios.get(apiUrl.toString(), {
+            timeout: DEFAULT_TIMEOUT,
+            headers: {
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Accept-Encoding': 'gzip, deflate, br, zstd',
+                'Cookie': cookies,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
+                'Referer': 'https://portals.aliexpress.com/affiportals/web/link_generator.htm',
+                'Origin': 'https://portals.aliexpress.com',
+                'sec-ch-ua': '"Not(A:Brand";v="8", "Chromium";v="144", "Google Chrome";v="144"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Windows"',
+                'sec-fetch-dest': 'empty',
+                'sec-fetch-mode': 'cors',
+                'sec-fetch-site': 'same-origin',
+                'bx-v': '2.5.36'
+            }
+        });
+        
+        // Check for successful response
+        if (response.data && response.data.success === true && response.data.code === '00') {
+            if (response.data.data && response.data.data.shortLink) {
+                return response.data.data.shortLink;
+            }
+        }
+        
+        console.warn('[AliExpress] Portal API response invalid:', response.data);
+        return null;
+    } catch (err) {
+        throw err;
     }
 }
 

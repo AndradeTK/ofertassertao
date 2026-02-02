@@ -950,6 +950,11 @@
                                             <label class="block text-xs font-medium text-gray-500">Tracking ID</label>
                                             <input type="text" id="setting_ALIEXPRESS_TRACKING_ID" class="w-full px-3 py-1 border border-gray-300 rounded text-sm">
                                         </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-500">Cookies do Portal (para Short Links)</label>
+                                            <textarea id="setting_ALIEXPRESS_COOKIES" rows="3" placeholder="xman_us_f=xxx; xman_t=xxx; aep_usuc_f=xxx; ..." class="w-full px-3 py-1 border border-gray-300 rounded text-sm font-mono text-xs"></textarea>
+                                            <p class="text-xs text-gray-400 mt-1"><i class="fas fa-info-circle"></i> Copie os cookies do navegador logado no Portal AliExpress para gerar links curtos (s.click.aliexpress.com)</p>
+                                        </div>
                                     </div>
 
                                     <!-- Amazon -->
@@ -1004,7 +1009,7 @@
                                         Os cookies serão salvos automaticamente para gerar links curtos (amzn.to, mercadolivre.com/sec/xxx).
                                     </p>
                                     
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <!-- Mercado Livre Cookies -->
                                         <div class="p-4 bg-white rounded-lg border border-gray-200">
                                             <div class="flex items-center justify-between mb-3">
@@ -1048,6 +1053,30 @@
                                                     <i class="fas fa-check mr-1"></i> Capturar
                                                 </button>
                                                 <button onclick="clearCookies('amazon')" class="px-3 py-2 bg-red-100 hover:bg-red-200 text-red-600 text-sm font-semibold rounded-lg transition-colors">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- AliExpress Cookies -->
+                                        <div class="p-4 bg-white rounded-lg border border-gray-200">
+                                            <div class="flex items-center justify-between mb-3">
+                                                <h6 class="font-bold text-red-500 flex items-center gap-2">
+                                                    <i class="fas fa-shopping-bag"></i> AliExpress
+                                                </h6>
+                                                <span id="aliexpressCookieStatus" class="px-2 py-1 text-xs rounded-full bg-gray-200 text-gray-600">
+                                                    Verificando...
+                                                </span>
+                                            </div>
+                                            <p id="aliexpressCookieDate" class="text-xs text-gray-500 mb-3"></p>
+                                            <div class="flex gap-2">
+                                                <button onclick="openBrowser('aliexpress')" id="btnAliexpressOpen" class="flex-1 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-colors">
+                                                    <i class="fas fa-external-link-alt mr-1"></i> Abrir
+                                                </button>
+                                                <button onclick="captureCookies('aliexpress')" id="btnAliexpressCapture" class="flex-1 px-3 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-semibold rounded-lg transition-colors">
+                                                    <i class="fas fa-check mr-1"></i> Capturar
+                                                </button>
+                                                <button onclick="clearCookies('aliexpress')" class="px-3 py-2 bg-red-100 hover:bg-red-200 text-red-600 text-sm font-semibold rounded-lg transition-colors">
                                                     <i class="fas fa-trash"></i>
                                                 </button>
                                             </div>
@@ -1604,6 +1633,21 @@ console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detect
                     amazonStatus.className = 'px-2 py-1 text-xs rounded-full bg-red-100 text-red-600';
                     amazonDate.textContent = '';
                 }
+                
+                // AliExpress
+                const aliexpressStatus = document.getElementById('aliexpressCookieStatus');
+                const aliexpressDate = document.getElementById('aliexpressCookieDate');
+                if (status.aliexpress && status.aliexpress.hasCookies) {
+                    aliexpressStatus.textContent = 'Configurado';
+                    aliexpressStatus.className = 'px-2 py-1 text-xs rounded-full bg-green-100 text-green-700';
+                    aliexpressDate.textContent = status.aliexpress.lastUpdated 
+                        ? `Atualizado: ${new Date(status.aliexpress.lastUpdated).toLocaleString('pt-BR')}`
+                        : '';
+                } else {
+                    aliexpressStatus.textContent = 'Não configurado';
+                    aliexpressStatus.className = 'px-2 py-1 text-xs rounded-full bg-red-100 text-red-600';
+                    aliexpressDate.textContent = '';
+                }
             } catch (err) {
                 console.error('Erro ao verificar cookies:', err);
             }
@@ -1611,14 +1655,22 @@ console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detect
         
         // Open browser for login
         async function openBrowser(platform) {
-            const btn = platform === 'ml' ? document.getElementById('btnMlOpen') : document.getElementById('btnAmazonOpen');
+            let btn;
+            if (platform === 'ml') btn = document.getElementById('btnMlOpen');
+            else if (platform === 'amazon') btn = document.getElementById('btnAmazonOpen');
+            else if (platform === 'aliexpress') btn = document.getElementById('btnAliexpressOpen');
+            
             const originalText = btn.innerHTML;
             
             try {
                 btn.disabled = true;
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Abrindo...';
                 
-                const endpoint = platform === 'ml' ? '/api/cookies/ml/start' : '/api/cookies/amazon/start';
+                let endpoint;
+                if (platform === 'ml') endpoint = '/api/cookies/ml/start';
+                else if (platform === 'amazon') endpoint = '/api/cookies/amazon/start';
+                else if (platform === 'aliexpress') endpoint = '/api/cookies/aliexpress/start';
+                
                 const response = await fetch(endpoint, { method: 'POST' });
                 const result = await response.json();
                 
@@ -1637,14 +1689,22 @@ console.log(peerId ? `ID do grupo atual: ${peerId}` : 'Não foi possível detect
         
         // Capture cookies after login
         async function captureCookies(platform) {
-            const btn = platform === 'ml' ? document.getElementById('btnMlCapture') : document.getElementById('btnAmazonCapture');
+            let btn;
+            if (platform === 'ml') btn = document.getElementById('btnMlCapture');
+            else if (platform === 'amazon') btn = document.getElementById('btnAmazonCapture');
+            else if (platform === 'aliexpress') btn = document.getElementById('btnAliexpressCapture');
+            
             const originalText = btn.innerHTML;
             
             try {
                 btn.disabled = true;
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Capturando...';
                 
-                const endpoint = platform === 'ml' ? '/api/cookies/ml/capture' : '/api/cookies/amazon/capture';
+                let endpoint;
+                if (platform === 'ml') endpoint = '/api/cookies/ml/capture';
+                else if (platform === 'amazon') endpoint = '/api/cookies/amazon/capture';
+                else if (platform === 'aliexpress') endpoint = '/api/cookies/aliexpress/capture';
+                
                 const response = await fetch(endpoint, { method: 'POST' });
                 const result = await response.json();
                 

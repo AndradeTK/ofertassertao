@@ -83,6 +83,60 @@ function broadcastToClients(eventType, data) {
 }
 
 /**
+ * Check if a URL has already been processed (duplicate check)
+ * Uses Redis SETNX for atomic lock - prevents race conditions
+ * @param {string} url - The URL to check
+ * @param {number} expirySeconds - How long to keep the lock (default 1 hour)
+ * @returns {Promise<{isDuplicate: boolean, key: string}>}
+ */
+async function checkDuplicateUrl(url, expirySeconds = 3600) {
+    if (!url) return { isDuplicate: false, key: null };
+    
+    const key = 'promo:' + crypto.createHash('sha1').update(url).digest('hex');
+    
+    try {
+        // Use SETNX (SET if Not eXists) for atomic lock
+        const result = await Promise.race([
+            redis.set(key, 'processing', 'EX', expirySeconds, 'NX'),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Redis timeout')), 3000))
+        ]);
+        
+        // SETNX returns 'OK' if key was set (new URL), null if key exists (duplicate)
+        const gotLock = result === 'OK';
+        
+        if (!gotLock) {
+            logger.info(`[DuplicateCheck] URL duplicada detectada: ${url.substring(0, 50)}...`);
+            return { isDuplicate: true, key };
+        }
+        
+        logger.info(`[DuplicateCheck] Nova URL registrada: ${url.substring(0, 50)}...`);
+        return { isDuplicate: false, key };
+    } catch (err) {
+        logger.warn(`[DuplicateCheck] Redis error: ${err.message}, permitindo envio`);
+        // On Redis error, allow the promotion to proceed
+        return { isDuplicate: false, key };
+    }
+}
+
+/**
+ * Mark a URL as processed in Redis (for manual approvals that skip normal flow)
+ * @param {string} url - The URL to mark
+ * @param {number} expirySeconds - How long to keep the mark (default 1 hour)
+ */
+async function markUrlAsProcessed(url, expirySeconds = 3600) {
+    if (!url) return;
+    
+    const key = 'promo:' + crypto.createHash('sha1').update(url).digest('hex');
+    
+    try {
+        await redis.set(key, 'sent', 'EX', expirySeconds);
+        logger.info(`[DuplicateCheck] URL marcada como processada: ${url.substring(0, 50)}...`);
+    } catch (err) {
+        logger.warn(`[DuplicateCheck] Erro ao marcar URL: ${err.message}`);
+    }
+}
+
+/**
  * Filter out unwanted URLs that are not affiliate store links
  * Removes Telegram links, bots, blogs, and other non-store URLs
  * Also checks database for custom excluded patterns
@@ -754,5 +808,7 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
 module.exports = {
     handlePromotionFlow,
     initializePromotionFlow,
-    broadcastToClients
+    broadcastToClients,
+    checkDuplicateUrl,
+    markUrlAsProcessed
 };
