@@ -200,10 +200,8 @@ async function initClient(apiId, apiHash) {
         baseLogger: logger,
         autoReconnect: true,
         retryDelay: 3000,
+        floodSleepThreshold: 0, // Disable automatic flood wait sleep
     });
-
-    // Enable catching up on missed messages
-    client.floodSleepThreshold = 60;
 
     // Set up connection event handlers
     setupConnectionHandlers();
