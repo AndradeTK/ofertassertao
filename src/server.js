@@ -29,6 +29,49 @@ const { createComponentLogger } = require('./config/logger');
 
 const logger = createComponentLogger('Server');
 
+/**
+ * Helper function to get image source for Telegram
+ * Converts local paths to file source, validates URLs
+ * @param {string} imagePath - The image path (local or URL)
+ * @returns {object|string|null} - Telegram-compatible image source
+ */
+function getImageSourceForTelegram(imagePath) {
+    if (!imagePath) return null;
+    
+    // If it's a local path (starts with /uploads), convert to absolute path
+    if (imagePath.startsWith('/uploads')) {
+        const absolutePath = path.join(__dirname, '..', imagePath);
+        if (fs.existsSync(absolutePath)) {
+            console.log(`[Image] Using local file: ${absolutePath}`);
+            return { source: absolutePath };
+        } else {
+            console.log(`[Image] Local file not found: ${absolutePath}`);
+            return null;
+        }
+    }
+    
+    // Skip localhost URLs that Telegram can't access
+    if (imagePath.includes('localhost') || imagePath.includes('127.0.0.1') || imagePath.includes(':3000')) {
+        console.log(`[Image] Skipping localhost URL: ${imagePath}`);
+        return null;
+    }
+    
+    // Public URL - use directly
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+        console.log(`[Image] Using public URL: ${imagePath}`);
+        return imagePath;
+    }
+    
+    // Absolute local path
+    if (fs.existsSync(imagePath)) {
+        console.log(`[Image] Using absolute path: ${imagePath}`);
+        return { source: imagePath };
+    }
+    
+    console.log(`[Image] Invalid path: ${imagePath}`);
+    return null;
+}
+
 // Configure multer for file uploads
 const upload = multer({ 
     dest: 'uploads/',
@@ -116,6 +159,7 @@ async function reinitializeBot() {
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
@@ -709,13 +753,14 @@ app.get('/api/pending-promotions/:id', async (req, res) => {
 // Update a pending promotion
 app.put('/api/pending-promotions/:id', async (req, res) => {
     try {
-        const { product_name, price, coupon, category, processed_text } = req.body;
+        const { product_name, price, coupon, category, processed_text, image_path } = req.body;
         const updated = await PendingPromotions.update(req.params.id, {
             product_name,
             price,
             coupon,
             suggested_category: category,
-            processed_text
+            processed_text,
+            image_path
         });
         
         if (!updated) {
@@ -811,18 +856,8 @@ app.post('/api/pending-promotions/:id/approve', async (req, res) => {
         if (inviteLink) inlineKeyboard.push([{ text: 'Entrar no Grupo', url: inviteLink }]);
         const replyMarkup = inlineKeyboard.length > 0 ? { inline_keyboard: inlineKeyboard } : undefined;
         
-        // Check if image is valid for Telegram (must be public URL or file_id, not localhost)
-        let imageSource = promotion.image_path;
-        if (imageSource) {
-            // Skip localhost/local URLs that Telegram can't access
-            if (imageSource.includes('localhost') || 
-                imageSource.includes('127.0.0.1') || 
-                imageSource.startsWith('/uploads') ||
-                imageSource.includes(':3000')) {
-                console.log(`[Approve] Skipping local image URL: ${imageSource}`);
-                imageSource = null;
-            }
-        }
+        // Get image source for Telegram (handles local files and URLs)
+        const imageSource = getImageSourceForTelegram(promotion.image_path);
         
         // Create the send callback function
         const sendCallback = async () => {
@@ -1046,6 +1081,9 @@ app.post('/api/pending-promotions/approve-all', async (req, res) => {
                 // Mark as approved
                 await PendingPromotions.approve(promo.id, category);
                 
+                // Get image source for Telegram
+                const imageSource = getImageSourceForTelegram(promo.image_path);
+                
                 // Enqueue for sending
                 const sendData = {
                     productName: promo.product_name || 'Produto',
@@ -1056,8 +1094,8 @@ app.post('/api/pending-promotions/approve-all', async (req, res) => {
                         const bot = global.telegramBot;
                         const groupChatId = await Config.getGroupChatId() || process.env.GROUP_CHAT_ID;
                         
-                        if (promo.image_path && promo.image_path.startsWith('http')) {
-                            await bot.telegram.sendPhoto(groupChatId, promo.image_path, {
+                        if (imageSource) {
+                            await bot.telegram.sendPhoto(groupChatId, imageSource, {
                                 caption: promo.processed_text || promo.original_text,
                                 parse_mode: 'HTML',
                                 message_thread_id: threadId || undefined
@@ -1184,6 +1222,9 @@ app.post('/api/no-affiliate-promotions/approve-all', async (req, res) => {
                 
                 await PendingPromotions.approve(promo.id, category);
                 
+                // Get image source for Telegram
+                const imageSource = getImageSourceForTelegram(promo.image_path);
+                
                 const sendData = {
                     productName: promo.product_name || 'Produto',
                     message: promo.processed_text || promo.original_text,
@@ -1193,8 +1234,8 @@ app.post('/api/no-affiliate-promotions/approve-all', async (req, res) => {
                         const bot = global.telegramBot;
                         const groupChatId = await Config.getGroupChatId() || process.env.GROUP_CHAT_ID;
                         
-                        if (promo.image_path && promo.image_path.startsWith('http')) {
-                            await bot.telegram.sendPhoto(groupChatId, promo.image_path, {
+                        if (imageSource) {
+                            await bot.telegram.sendPhoto(groupChatId, imageSource, {
                                 caption: promo.processed_text || promo.original_text,
                                 parse_mode: 'HTML',
                                 message_thread_id: threadId || undefined
@@ -1935,6 +1976,46 @@ app.post('/api/upload/logo', logoUpload.single('logo'), (req, res) => {
     }
     logger.info('Logo updated');
     res.json({ status: 'ok', message: 'Logo atualizada com sucesso' });
+});
+
+// Upload de imagem genérica (para promoções)
+const promoImageStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const uploadDir = path.join(__dirname, '../uploads');
+        // Criar diretório se não existir
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        // Gerar nome único com timestamp e random
+        const uniqueName = `promo_${Date.now()}_${Math.random().toString(36).substring(7)}${path.extname(file.originalname)}`;
+        cb(null, uniqueName);
+    }
+});
+const promoImageUpload = multer({ 
+    storage: promoImageStorage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (allowedTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Tipo de arquivo não permitido. Use JPG, PNG, GIF ou WebP.'));
+        }
+    }
+});
+
+app.post('/api/upload-image', promoImageUpload.single('image'), (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: 'Nenhum arquivo enviado' });
+    }
+    
+    // Retornar caminho relativo para usar na promoção
+    const imagePath = `/uploads/${req.file.filename}`;
+    logger.info(`Image uploaded: ${imagePath}`);
+    res.json({ success: true, path: imagePath, filename: req.file.filename });
 });
 
 // 4. Backup / Export

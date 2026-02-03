@@ -133,29 +133,38 @@ class PendingPromotions {
             category,
             suggested_category,
             processed_text,
-            processedText
+            processedText,
+            image_path,
+            imagePath
         } = data;
 
         // Support both snake_case and camelCase
         const finalProductName = product_name || productName || '';
         const finalCategory = category || suggested_category || '';
         const finalProcessedText = processed_text || processedText || null;
+        const finalImagePath = image_path !== undefined ? image_path : (imagePath !== undefined ? imagePath : null);
 
+        // Build dynamic query based on what fields are provided
+        const fields = ['product_name = ?', 'price = ?', 'coupon = ?', 'suggested_category = ?'];
+        const values = [finalProductName, price || '', coupon || '', finalCategory];
+        
         if (finalProcessedText) {
-            await pool.execute(
-                `UPDATE pending_promotions 
-                SET product_name = ?, price = ?, coupon = ?, suggested_category = ?, processed_text = ?
-                WHERE id = ?`,
-                [finalProductName, price || '', coupon || '', finalCategory, finalProcessedText, id]
-            );
-        } else {
-            await pool.execute(
-                `UPDATE pending_promotions 
-                SET product_name = ?, price = ?, coupon = ?, suggested_category = ?
-                WHERE id = ?`,
-                [finalProductName, price || '', coupon || '', finalCategory, id]
-            );
+            fields.push('processed_text = ?');
+            values.push(finalProcessedText);
         }
+        
+        // Handle image_path - allow setting to null (empty string means remove)
+        if (finalImagePath !== null) {
+            fields.push('image_path = ?');
+            values.push(finalImagePath || null);
+        }
+        
+        values.push(id);
+        
+        await pool.execute(
+            `UPDATE pending_promotions SET ${fields.join(', ')} WHERE id = ?`,
+            values
+        );
 
         return true;
     }
