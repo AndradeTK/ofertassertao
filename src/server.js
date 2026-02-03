@@ -126,6 +126,7 @@ let bot = null;
 const BOT_TOKEN = process.env.TG_BOT_TOKEN || process.env.TELEGRAM_TOKEN;
 if (BOT_TOKEN) {
     bot = new Telegraf(BOT_TOKEN);
+    global.telegramBot = bot; // Make bot available globally
 } 
 
 // Initialize promotion flow with bot and config
@@ -144,6 +145,7 @@ async function reinitializeBot() {
         if (!newToken) throw new Error('No token found');
         
         bot = new Telegraf(newToken);
+        global.telegramBot = bot; // Update global reference
         initializePromotionFlow(bot, Config);
         setupBotHandlers(bot);
         bot.launch();
@@ -1092,6 +1094,9 @@ app.post('/api/pending-promotions/approve-all', async (req, res) => {
                     threadId: threadId,
                     sendCallback: async () => {
                         const bot = global.telegramBot;
+                        if (!bot || !bot.telegram) {
+                            throw new Error('Bot não está inicializado');
+                        }
                         const groupChatId = await Config.getGroupChatId() || process.env.GROUP_CHAT_ID;
                         
                         if (imageSource) {
@@ -1232,6 +1237,9 @@ app.post('/api/no-affiliate-promotions/approve-all', async (req, res) => {
                     threadId: threadId,
                     sendCallback: async () => {
                         const bot = global.telegramBot;
+                        if (!bot || !bot.telegram) {
+                            throw new Error('Bot não está inicializado');
+                        }
                         const groupChatId = await Config.getGroupChatId() || process.env.GROUP_CHAT_ID;
                         
                         if (imageSource) {
