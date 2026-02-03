@@ -56,6 +56,34 @@ const Config = {
     } catch (err) {
       throw err;
     }
+  },
+
+  async getRemoveImageFromCoupons() {
+    try {
+      const [rows] = await pool.execute('SELECT value_text FROM config WHERE key_name = ? LIMIT 1', ['REMOVE_IMAGE_FROM_COUPONS']);
+      if (rows.length > 0) {
+        return rows[0].value_text === '1' || rows[0].value_text === 'true';
+      }
+      // Default: disabled
+      return false;
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  async setRemoveImageFromCoupons(enabled) {
+    try {
+      const value = enabled ? '1' : '0';
+      const [existing] = await pool.execute('SELECT id FROM config WHERE key_name = ? LIMIT 1', ['REMOVE_IMAGE_FROM_COUPONS']);
+      if (existing.length > 0) {
+        await pool.execute('UPDATE config SET value_text = ? WHERE key_name = ?', [value, 'REMOVE_IMAGE_FROM_COUPONS']);
+      } else {
+        await pool.execute('INSERT INTO config (key_name, value_text) VALUES (?, ?)', ['REMOVE_IMAGE_FROM_COUPONS', value]);
+      }
+      return true;
+    } catch (err) {
+      throw err;
+    }
   }
 };
 

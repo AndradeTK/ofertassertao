@@ -660,7 +660,17 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
         }
 
         // Use attached photo (file_id) or meta image (URL)
-        const imageSource = attachedPhotoUrl || meta.image;
+        let imageSource = attachedPhotoUrl || meta.image;
+        
+        // Check if we should remove image from coupon messages
+        const removeImageFromCoupons = await Config.getRemoveImageFromCoupons();
+        const normalizedCategory = (ai.category || '').toLowerCase().trim();
+        
+        if (imageSource && removeImageFromCoupons && (normalizedCategory === 'cupom' || normalizedCategory === 'cupons')) {
+            logger.info('[8/8] Removing image from coupon message (REMOVE_IMAGE_FROM_COUPONS enabled)');
+            console.log(`[8/8] 🎟️ Removendo imagem de mensagem de cupom (opção ativada)`);
+            imageSource = null;
+        }
         
         // Send with image if available
         if (imageSource) {

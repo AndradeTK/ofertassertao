@@ -55,7 +55,8 @@ INSERT IGNORE INTO config (key_name, value_text) VALUES
 ('THEME_COLOR_PRIMARY', '#1e3a8a'),
 ('THEME_COLOR_SECONDARY', '#3b82f6'),
 ('THEME_FONT_URL', NULL),
-('SEND_TO_GENERAL', '1');
+('SEND_TO_GENERAL', '1'),
+('REMOVE_IMAGE_FROM_COUPONS', '0');
 
 -- Tabela para palavras proibidas
 CREATE TABLE IF NOT EXISTS forbidden_words (
