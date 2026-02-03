@@ -22,6 +22,7 @@ async function migrateSettings() {
         // Telegram
         { key: 'TELEGRAM_TOKEN', value: process.env.TELEGRAM_TOKEN || process.env.TG_BOT_TOKEN },
         { key: 'GROUP_CHAT_ID', value: process.env.GROUP_CHAT_ID },
+        { key: 'GROUP_INVITE_LINK', value: process.env.GROUP_INVITE_LINK || process.env.GROUP_LINK },
         { key: 'TELEGRAM_API_ID', value: process.env.TELEGRAM_API_ID },
         { key: 'TELEGRAM_API_HASH', value: process.env.TELEGRAM_API_HASH },
         
@@ -38,10 +39,9 @@ async function migrateSettings() {
         { key: 'ML_AFFILIATE_TAG', value: process.env.ML_AFFILIATE_TAG },
         { key: 'ML_COOKIES', value: process.env.ML_COOKIES },
         
-        // AliExpress
-        { key: 'ALIEXPRESS_APP_KEY', value: process.env.ALIEXPRESS_APP_KEY },
-        { key: 'ALIEXPRESS_APP_SECRET', value: process.env.ALIEXPRESS_APP_SECRET },
+        // AliExpress (usa portal com cookies, não precisa de APP_KEY/SECRET)
         { key: 'ALIEXPRESS_TRACKING_ID', value: process.env.ALIEXPRESS_TRACKING_ID },
+        { key: 'ALIEXPRESS_COOKIES', value: process.env.ALIEXPRESS_COOKIES },
         
         // Amazon
         { key: 'AMAZON_TRACKING_ID', value: process.env.AMAZON_TRACKING_ID },

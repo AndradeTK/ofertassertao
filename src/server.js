@@ -1054,16 +1054,16 @@ app.post('/api/pending-promotions/approve-all', async (req, res) => {
                     threadId: threadId,
                     sendCallback: async () => {
                         const bot = global.telegramBot;
-                        const destChatId = process.env.DEST_CHAT_ID;
+                        const groupChatId = await Config.getGroupChatId() || process.env.GROUP_CHAT_ID;
                         
                         if (promo.image_path && promo.image_path.startsWith('http')) {
-                            await bot.telegram.sendPhoto(destChatId, promo.image_path, {
+                            await bot.telegram.sendPhoto(groupChatId, promo.image_path, {
                                 caption: promo.processed_text || promo.original_text,
                                 parse_mode: 'HTML',
                                 message_thread_id: threadId || undefined
                             });
                         } else {
-                            await bot.telegram.sendMessage(destChatId, promo.processed_text || promo.original_text, {
+                            await bot.telegram.sendMessage(groupChatId, promo.processed_text || promo.original_text, {
                                 parse_mode: 'HTML',
                                 message_thread_id: threadId || undefined,
                                 disable_web_page_preview: false
@@ -1191,16 +1191,16 @@ app.post('/api/no-affiliate-promotions/approve-all', async (req, res) => {
                     threadId: threadId,
                     sendCallback: async () => {
                         const bot = global.telegramBot;
-                        const destChatId = process.env.DEST_CHAT_ID;
+                        const groupChatId = await Config.getGroupChatId() || process.env.GROUP_CHAT_ID;
                         
                         if (promo.image_path && promo.image_path.startsWith('http')) {
-                            await bot.telegram.sendPhoto(destChatId, promo.image_path, {
+                            await bot.telegram.sendPhoto(groupChatId, promo.image_path, {
                                 caption: promo.processed_text || promo.original_text,
                                 parse_mode: 'HTML',
                                 message_thread_id: threadId || undefined
                             });
                         } else {
-                            await bot.telegram.sendMessage(destChatId, promo.processed_text || promo.original_text, {
+                            await bot.telegram.sendMessage(groupChatId, promo.processed_text || promo.original_text, {
                                 parse_mode: 'HTML',
                                 message_thread_id: threadId || undefined,
                                 disable_web_page_preview: false

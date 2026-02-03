@@ -29,6 +29,7 @@ INSERT IGNORE INTO config (key_name, value_text) VALUES
 ('REDIS_URL', 'redis://localhost:6379'),
 ('TELEGRAM_TOKEN', NULL),
 ('GROUP_CHAT_ID', NULL),
+('GROUP_INVITE_LINK', NULL),
 ('TELEGRAM_API_ID', NULL),
 ('TELEGRAM_API_HASH', NULL),
 ('GEMINI_API_KEY', NULL),
@@ -38,18 +39,23 @@ INSERT IGNORE INTO config (key_name, value_text) VALUES
 ('SHOPEE_APP_SECRET', NULL),
 ('ML_AFFILIATE_TAG', NULL),
 ('ML_COOKIES', NULL),
-('ALIEXPRESS_APP_KEY', NULL),
-('ALIEXPRESS_APP_SECRET', NULL),
+('ML_COOKIES_UPDATED', NULL),
 ('ALIEXPRESS_TRACKING_ID', NULL),
+('ALIEXPRESS_COOKIES', NULL),
+('ALIEXPRESS_COOKIES_UPDATED', NULL),
 ('AMAZON_TRACKING_ID', NULL),
 ('AMAZON_COOKIES', NULL),
+('AMAZON_COOKIES_UPDATED', NULL),
 ('AFFILIATE_SHOPEE_ENABLED', 'true'),
 ('AFFILIATE_ML_ENABLED', 'true'),
 ('AFFILIATE_ALIEXPRESS_ENABLED', 'true'),
 ('AFFILIATE_AMAZON_ENABLED', 'true'),
+('RATE_LIMIT_MAX_MESSAGES', '5'),
+('RATE_LIMIT_TIME_WINDOW', '60'),
 ('THEME_COLOR_PRIMARY', '#1e3a8a'),
 ('THEME_COLOR_SECONDARY', '#3b82f6'),
-('THEME_FONT_URL', NULL);
+('THEME_FONT_URL', NULL),
+('SEND_TO_GENERAL', '1');
 
 -- Tabela para palavras proibidas
 CREATE TABLE IF NOT EXISTS forbidden_words (
@@ -142,11 +148,6 @@ INSERT IGNORE INTO forbidden_words (word) VALUES
     ('sem estoque'),
     ('fora de estoque');
 
--- Inserir configurações padrão do General
-INSERT INTO config (key_name, value_text) VALUES 
-    ('SEND_TO_GENERAL', '1')
-ON DUPLICATE KEY UPDATE key_name = key_name;
-
 -- Inserir todas as categorias utilizadas pelo sistema
 -- IMPORTANTE: Os thread_ids devem ser configurados com os IDs reais dos tópicos do Telegram
 INSERT INTO categories (name_ia, thread_id) VALUES
@@ -177,6 +178,7 @@ INSERT INTO categories (name_ia, thread_id) VALUES
 ('Teclado', 54),
 ('Telefone/Tablet', 53),
 ('Televisão', 511),
+('Variados', 516)
 ON DUPLICATE KEY UPDATE name_ia = VALUES(name_ia);
 
 -- Mensagem de sucesso
