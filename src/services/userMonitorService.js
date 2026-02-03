@@ -833,9 +833,13 @@ async function processDirectSendQueue() {
         try {
             // Call the send callback
             if (item.sendCallback && typeof item.sendCallback === 'function') {
+                console.log(`[DirectQueue] 🔧 Chamando sendCallback para: ${item.productName || 'Produto'}`);
+                console.log(`[DirectQueue] 📋 Dados: Image=${item.image || 'N/A'}, ThreadId=${item.threadId || 'N/A'}, MsgLen=${item.message?.length || 0}`);
                 await item.sendCallback();
                 console.log(`[DirectQueue] ✅ Promoção ENVIADA: ${item.productName || 'Produto'}`);
                 sendSuccess = true;
+            } else {
+                console.log(`[DirectQueue] ⚠️ sendCallback não é uma função válida!`);
             }
         } catch (err) {
             console.error(`[DirectQueue] ❌ Erro ao enviar: ${err.message}`);

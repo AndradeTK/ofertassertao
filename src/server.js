@@ -1094,23 +1094,30 @@ app.post('/api/pending-promotions/approve-all', async (req, res) => {
                     threadId: threadId,
                     sendCallback: async () => {
                         const bot = global.telegramBot;
+                        console.log(`[SendCallback] 🔍 Iniciando envio - Bot existe: ${!!bot}, Bot.telegram existe: ${!!(bot && bot.telegram)}`);
+                        
                         if (!bot || !bot.telegram) {
                             throw new Error('Bot não está inicializado');
                         }
                         const groupChatId = await Config.getGroupChatId() || process.env.GROUP_CHAT_ID;
+                        console.log(`[SendCallback] 📍 GroupChatId: ${groupChatId}, ThreadId: ${threadId}, ImageSource: ${imageSource ? (typeof imageSource === 'string' ? imageSource.substring(0, 50) : JSON.stringify(imageSource).substring(0, 80)) : 'NENHUMA'}`);
                         
                         if (imageSource) {
-                            await bot.telegram.sendPhoto(groupChatId, imageSource, {
+                            console.log(`[SendCallback] 📸 Enviando com IMAGEM...`);
+                            const result = await bot.telegram.sendPhoto(groupChatId, imageSource, {
                                 caption: promo.processed_text || promo.original_text,
                                 parse_mode: 'HTML',
                                 message_thread_id: threadId || undefined
                             });
+                            console.log(`[SendCallback] ✅ Foto enviada! Message ID: ${result?.message_id}`);
                         } else {
-                            await bot.telegram.sendMessage(groupChatId, promo.processed_text || promo.original_text, {
+                            console.log(`[SendCallback] 📝 Enviando TEXTO apenas...`);
+                            const result = await bot.telegram.sendMessage(groupChatId, promo.processed_text || promo.original_text, {
                                 parse_mode: 'HTML',
                                 message_thread_id: threadId || undefined,
                                 disable_web_page_preview: false
                             });
+                            console.log(`[SendCallback] ✅ Mensagem enviada! Message ID: ${result?.message_id}`);
                         }
                     }
                 };
@@ -1237,23 +1244,30 @@ app.post('/api/no-affiliate-promotions/approve-all', async (req, res) => {
                     threadId: threadId,
                     sendCallback: async () => {
                         const bot = global.telegramBot;
+                        console.log(`[SendCallback] 🔍 Iniciando envio (no-affiliate) - Bot existe: ${!!bot}, Bot.telegram existe: ${!!(bot && bot.telegram)}`);
+                        
                         if (!bot || !bot.telegram) {
                             throw new Error('Bot não está inicializado');
                         }
                         const groupChatId = await Config.getGroupChatId() || process.env.GROUP_CHAT_ID;
+                        console.log(`[SendCallback] 📍 GroupChatId: ${groupChatId}, ThreadId: ${threadId}, ImageSource: ${imageSource ? (typeof imageSource === 'string' ? imageSource.substring(0, 50) : JSON.stringify(imageSource).substring(0, 80)) : 'NENHUMA'}`);
                         
                         if (imageSource) {
-                            await bot.telegram.sendPhoto(groupChatId, imageSource, {
+                            console.log(`[SendCallback] 📸 Enviando com IMAGEM...`);
+                            const result = await bot.telegram.sendPhoto(groupChatId, imageSource, {
                                 caption: promo.processed_text || promo.original_text,
                                 parse_mode: 'HTML',
                                 message_thread_id: threadId || undefined
                             });
+                            console.log(`[SendCallback] ✅ Foto enviada! Message ID: ${result?.message_id}`);
                         } else {
-                            await bot.telegram.sendMessage(groupChatId, promo.processed_text || promo.original_text, {
+                            console.log(`[SendCallback] 📝 Enviando TEXTO apenas...`);
+                            const result = await bot.telegram.sendMessage(groupChatId, promo.processed_text || promo.original_text, {
                                 parse_mode: 'HTML',
                                 message_thread_id: threadId || undefined,
                                 disable_web_page_preview: false
                             });
+                            console.log(`[SendCallback] ✅ Mensagem enviada! Message ID: ${result?.message_id}`);
                         }
                     }
                 };
