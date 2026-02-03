@@ -159,38 +159,51 @@ async function checkDatabase() {
         await testConnection();
         logCheck('ok', 'Conexão com MySQL estabelecida');
         
-        // Verificar tabelas necessárias
-        console.log('\n📋 Verificando tabelas:');
+        // Verificar tabelas necessárias (conforme ofertassertao.sql)
+        console.log('\n📋 Verificando tabelas obrigatórias:');
         const requiredTables = [
-            'settings',
-            'config', 
-            'categories',
-            'forbidden_words',
-            'excluded_urls',
-            'pending_promotions',
-            'monitored_chats',
-            'processed_urls',
-            'scheduled_posts'
+            { name: 'config', desc: 'Configurações do sistema' },
+            { name: 'categories', desc: 'Categorias da IA → Tópicos Telegram' },
+            { name: 'monitoring', desc: 'Canais monitorados' },
+            { name: 'forbidden_words', desc: 'Palavras proibidas' },
+            { name: 'excluded_urls', desc: 'URLs excluídas' },
+            { name: 'pending_promotions', desc: 'Promoções pendentes de aprovação' },
+            { name: 'scheduled_posts', desc: 'Postagens agendadas' },
+            { name: 'post_history', desc: 'Histórico de postagens' },
+            { name: 'system_logs', desc: 'Logs do sistema' }
         ];
         
         const [rows] = await pool.execute('SHOW TABLES');
         const existingTables = rows.map(r => Object.values(r)[0].toLowerCase());
         
         for (const table of requiredTables) {
-            if (existingTables.includes(table.toLowerCase())) {
-                logCheck('ok', `Tabela '${table}'`);
+            if (existingTables.includes(table.name.toLowerCase())) {
+                logCheck('ok', `Tabela '${table.name}'`, table.desc);
             } else {
-                logCheck('fail', `Tabela '${table}' não existe`, 'Execute as migrations');
+                logCheck('fail', `Tabela '${table.name}' não existe`, 'Execute: mysql < migrations/ofertassertao.sql');
             }
         }
         
-        // Verificar se há dados em settings
+        // Verificar se há dados em config
+        console.log('\n📋 Verificando dados de configuração:');
         try {
-            const [settingsRows] = await pool.execute('SELECT COUNT(*) as count FROM settings');
-            if (settingsRows[0].count > 0) {
-                logCheck('ok', `Settings configurados`, `${settingsRows[0].count} registros`);
+            const [configRows] = await pool.execute('SELECT COUNT(*) as count FROM config');
+            if (configRows[0].count > 0) {
+                logCheck('ok', `Configurações na tabela 'config'`, `${configRows[0].count} registros`);
             } else {
-                logCheck('warn', 'Tabela settings vazia', 'Configure pelo painel admin');
+                logCheck('warn', 'Tabela config vazia', 'Execute as migrations para inserir dados padrão');
+            }
+        } catch (e) {
+            // Tabela pode não existir
+        }
+        
+        // Verificar se há categorias configuradas
+        try {
+            const [catRows] = await pool.execute('SELECT COUNT(*) as count FROM categories');
+            if (catRows[0].count > 0) {
+                logCheck('ok', `Categorias configuradas`, `${catRows[0].count} categorias`);
+            } else {
+                logCheck('warn', 'Nenhuma categoria configurada', 'Configure pelo painel admin ou execute migrations');
             }
         } catch (e) {
             // Tabela pode não existir
