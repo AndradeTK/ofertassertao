@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nodemon --ignore data/ --ignore logs/ --ignore uploads/ src/server.js",
     "start": "node src/server.js",
-    "migrate": "node scripts/migrate_settings.js"
+    "migrate": "node scripts/migrate_settings.js",
+    "check": "node scripts/verificacao_geral.js"
   },
   "keywords": [
     "telegram",
