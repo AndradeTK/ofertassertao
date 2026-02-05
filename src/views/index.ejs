@@ -2628,7 +2628,7 @@ console.log('%c⚠️ Execute este script em portals.aliexpress.com', 'font-size
         
         // Approve all pending promotions (AI fallback)
         async function approveAllPending() {
-            if (!confirm('Aprovar TODAS as promoções pendentes?\n\nElas serão enviadas com a categoria sugerida pela IA ou "Variados".')) {
+            if (!confirm('Aprovar TODAS as promoções pendentes?\n\nElas serão enviadas com a categoria sugerida pela IA ou "Outros".')) {
                 return;
             }
             
@@ -3024,7 +3024,23 @@ console.log('%c⚠️ Execute este script em portals.aliexpress.com', 'font-size
                     closeEditModal();
                     loadPendingPromotions();
                 } else {
-                    showToast(data.error || 'Erro ao aprovar promoção', 'error');
+                    if ((data.error || '').includes('Promoção duplicada detectada')) {
+                        showToast('Promoção duplicada detectada', 'warning');
+                        closeEditModal();
+                        // Remove the duplicate from the list in the UI
+                        // Find the card for this promo and remove it
+                        const promoCards = document.querySelectorAll('#pending-promotions-list .border.rounded-lg');
+                        for (const card of promoCards) {
+                            if (card.querySelector(`button[onclick*="openEditModal(${id})"]`)) {
+                                card.remove();
+                                break;
+                            }
+                        }
+                        // Optionally, reload the list to ensure consistency
+                        loadPendingPromotions();
+                    } else {
+                        showToast(data.error || 'Erro ao aprovar promoção', 'error');
+                    }
                 }
             } catch (err) {
                 console.error('Error approving promotion:', err);

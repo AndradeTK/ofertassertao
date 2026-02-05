@@ -238,27 +238,19 @@ function setupConnectionHandlers() {
     // Listen for disconnect events via client's internal mechanisms
     if (client._connection) {
         const originalOnDisconnect = client._connection._onDisconnect?.bind(client._connection);
-        client._connection._onDisconnect = async function(...args) {
-            logger.warn('Connection dropped, will attempt to reconnect...');
-            isConnected = false;
-            
-            // Notify frontend about disconnection
-            broadcastToClients({
-                type: 'connection_status',
-                status: 'disconnected',
-                message: 'Conexão perdida, tentando reconectar...'
-            });
-            
-            stopKeepAlive();
-            
-            if (originalOnDisconnect) {
-                await originalOnDisconnect(...args);
+        // NÃO sobrescreva client.disconnect para evitar desconexão automática ao fechar dashboard
+        // O client MTProto deve rodar sempre, independente do dashboard
+        if (originalOnDisconnect) {
+            const maybePromise = originalOnDisconnect(...args);
+            if (maybePromise && typeof maybePromise.then === 'function') {
+                maybePromise.then(() => scheduleReconnect());
+            } else {
+                scheduleReconnect();
             }
-            
-            // Trigger reconnection
+        } else {
             scheduleReconnect();
-        };
-    }
+        }
+    };
 
     // Also try to catch _handleUpdate for connection issues
     if (typeof client._handleConnectionError === 'function') {
@@ -413,9 +405,10 @@ function startKeepAlive() {
         clearInterval(keepAliveInterval);
     }
 
-    logger.info('Starting keep-alive system (ping every 2 minutes)');
+    logger.info('Starting keep-alive system (ping every 30 seconds)');
 
-    // Send a ping every 2 minutes to keep connection alive
+    // Send a ping every 30 seconds to keep connection alive
+    // This is more aggressive to prevent disconnections when dashboard is in background
     keepAliveInterval = setInterval(async () => {
         if (!client) {
             return;
@@ -442,7 +435,7 @@ function startKeepAlive() {
             
             scheduleReconnect();
         }
-    }, 2 * 60 * 1000); // Every 2 minutes (more frequent)
+    }, 30 * 1000); // Every 30 seconds (more aggressive)
 }
 
 /**

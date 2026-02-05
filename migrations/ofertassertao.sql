@@ -179,7 +179,7 @@ INSERT INTO categories (name_ia, thread_id) VALUES
 ('Teclado', 54),
 ('Telefone/Tablet', 53),
 ('Televisão', 511),
-('Variados', 516)
+('Outros', 516)
 ON DUPLICATE KEY UPDATE name_ia = VALUES(name_ia);
 
 -- Mensagem de sucesso

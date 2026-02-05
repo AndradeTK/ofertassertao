@@ -83,37 +83,118 @@ function broadcastToClients(eventType, data) {
 }
 
 /**
- * Check if a URL has already been processed (duplicate check)
- * Uses Redis SETNX for atomic lock - prevents race conditions
- * @param {string} url - The URL to check
- * @param {number} expirySeconds - How long to keep the lock (default 1 hour)
- * @returns {Promise<{isDuplicate: boolean, key: string}>}
+ * Extract the canonical product identifier from a URL
+ * Removes affiliate parameters and tracking to get the base product URL
+ * This ensures the same product from different affiliate links is detected as duplicate
  */
-async function checkDuplicateUrl(url, expirySeconds = 3600) {
-    if (!url) return { isDuplicate: false, key: null };
-    
-    const key = 'promo:' + crypto.createHash('sha1').update(url).digest('hex');
+function extractProductIdentifier(url) {
+    if (!url) return null;
     
     try {
-        // Use SETNX (SET if Not eXists) for atomic lock
+        const u = new URL(url);
+        const host = u.hostname.toLowerCase();
+        
+        // Shopee: extract shop_id and item_id
+        if (host.includes('shopee')) {
+            const match = url.match(/-i\.(\d+)\.(\d+)/) || url.match(/i\.(\d+)\.(\d+)/);
+            if (match) {
+                return `shopee:${match[1]}:${match[2]}`;
+            }
+        }
+        
+        // Mercado Livre: extract MLB ID
+        if (host.includes('mercadolivre') || host.includes('mercadolibre')) {
+            const match = url.match(/MLB-?(\d+)/);
+            if (match) {
+                return `ml:${match[1]}`;
+            }
+        }
+        
+        // Amazon: extract ASIN
+        if (host.includes('amazon') || host.includes('amzn')) {
+            const match = url.match(/\/dp\/([A-Z0-9]{10})/) || 
+                         url.match(/\/gp\/product\/([A-Z0-9]{10})/) ||
+                         url.match(/\/([A-Z0-9]{10})(?:\/|\?|$)/);
+            if (match) {
+                return `amazon:${match[1]}`;
+            }
+        }
+        
+        // AliExpress: extract item_id
+        if (host.includes('aliexpress')) {
+            const match = url.match(/item\/(\d+)\.html/) || url.match(/\/(\d{10,})/);
+            if (match) {
+                return `ali:${match[1]}`;
+            }
+        }
+        
+        // For other URLs, use hostname + pathname (without query params)
+        return `${host}:${u.pathname}`;
+    } catch (err) {
+        return null;
+    }
+}
+
+/**
+ * Check if a URL has already been processed (duplicate check)
+ * Uses Redis SETNX for atomic lock - prevents race conditions
+ * Now uses product identifier extraction for more robust detection
+ * @param {string} url - The URL to check
+ * @param {number} expirySeconds - How long to keep the lock (default 6 hours)
+ * @returns {Promise<{isDuplicate: boolean, key: string}>}
+ */
+async function checkDuplicateUrl(url, expirySeconds = 21600) {
+    if (!url) return { isDuplicate: false, key: null };
+
+    // Extract product identifier for more accurate duplicate detection
+    const productId = extractProductIdentifier(url);
+    const identifier = productId || url;
+
+    // Permitir passar o título explicitamente via argumento (para fallback manual)
+    let productTitle = arguments[2] || null;
+    if (!productTitle && global.lastPromotionMeta && global.lastPromotionMeta.url === url) {
+        productTitle = global.lastPromotionMeta.title;
+    }
+    // Normalize title for deduplication
+    const normalizedTitle = productTitle ? sanitizeUtf8(productTitle).trim().toLowerCase() : null;
+
+    const key = 'promo:' + crypto.createHash('sha256').update(identifier).digest('hex');
+    const urlKey = 'promo:url:' + crypto.createHash('sha256').update(url).digest('hex');
+    const titleKey = normalizedTitle ? 'promo:title:' + crypto.createHash('sha256').update(normalizedTitle).digest('hex') : null;
+
+    try {
+        // Check all keys - if any exists, it's a duplicate
+        const checks = [redis.get(key), redis.get(urlKey)];
+        if (titleKey) checks.push(redis.get(titleKey));
+        const [existingProduct, existingUrl, existingTitle] = await Promise.all(checks);
+
+        if (existingProduct || existingUrl || existingTitle) {
+            logger.info(`[DuplicateCheck] Duplicata detectada para: ${identifier.substring(0, 50)} ou título: ${normalizedTitle ? normalizedTitle.substring(0, 50) : ''}...`);
+            return { isDuplicate: true, key };
+        }
+
+        // Use SETNX for atomic lock
         const result = await Promise.race([
             redis.set(key, 'processing', 'EX', expirySeconds, 'NX'),
             new Promise((_, reject) => setTimeout(() => reject(new Error('Redis timeout')), 3000))
         ]);
-        
-        // SETNX returns 'OK' if key was set (new URL), null if key exists (duplicate)
+
+        // Also set the URL key
+        await redis.set(urlKey, 'processing', 'EX', expirySeconds, 'NX');
+        // Also set the title key
+        if (titleKey) await redis.set(titleKey, 'processing', 'EX', expirySeconds, 'NX');
+
         const gotLock = result === 'OK';
-        
+
         if (!gotLock) {
-            logger.info(`[DuplicateCheck] URL duplicada detectada: ${url.substring(0, 50)}...`);
+            logger.info(`[DuplicateCheck] URL duplicada (lock falhou): ${identifier.substring(0, 50)}...`);
             return { isDuplicate: true, key };
         }
-        
-        logger.info(`[DuplicateCheck] Nova URL registrada: ${url.substring(0, 50)}...`);
+
+        logger.info(`[DuplicateCheck] Nova promoção registrada: ${identifier.substring(0, 50)}...`);
         return { isDuplicate: false, key };
     } catch (err) {
         logger.warn(`[DuplicateCheck] Redis error: ${err.message}, permitindo envio`);
-        // On Redis error, allow the promotion to proceed
         return { isDuplicate: false, key };
     }
 }
@@ -121,18 +202,37 @@ async function checkDuplicateUrl(url, expirySeconds = 3600) {
 /**
  * Mark a URL as processed in Redis (for manual approvals that skip normal flow)
  * @param {string} url - The URL to mark
- * @param {number} expirySeconds - How long to keep the mark (default 1 hour)
+ * @param {number} expirySeconds - How long to keep the mark (default 6 hours)
  */
-async function markUrlAsProcessed(url, expirySeconds = 3600) {
+async function markUrlAsProcessed(url, expirySeconds = 21600) {
     if (!url) return;
-    
-    const key = 'promo:' + crypto.createHash('sha1').update(url).digest('hex');
-    
+
+    // Extract product identifier for consistent marking
+    const productId = extractProductIdentifier(url);
+    const identifier = productId || url;
+
+    // Permitir passar o título explicitamente via argumento (para fallback manual)
+    let productTitle = arguments[2] || null;
+    if (!productTitle && global.lastPromotionMeta && global.lastPromotionMeta.url === url) {
+        productTitle = global.lastPromotionMeta.title;
+    }
+    // Normalize title for deduplication
+    const normalizedTitle = productTitle ? sanitizeUtf8(productTitle).trim().toLowerCase() : null;
+
+    const key = 'promo:' + crypto.createHash('sha256').update(identifier).digest('hex');
+    const urlKey = 'promo:url:' + crypto.createHash('sha256').update(url).digest('hex');
+    const titleKey = normalizedTitle ? 'promo:title:' + crypto.createHash('sha256').update(normalizedTitle).digest('hex') : null;
+
     try {
-        await redis.set(key, 'sent', 'EX', expirySeconds);
-        logger.info(`[DuplicateCheck] URL marcada como processada: ${url.substring(0, 50)}...`);
+        const sets = [
+            redis.set(key, 'sent', 'EX', expirySeconds),
+            redis.set(urlKey, 'sent', 'EX', expirySeconds)
+        ];
+        if (titleKey) sets.push(redis.set(titleKey, 'sent', 'EX', expirySeconds));
+        await Promise.all(sets);
+        logger.info(`[DuplicateCheck] Promoção marcada como processada: ${identifier.substring(0, 50)}${normalizedTitle ? ' / ' + normalizedTitle.substring(0, 50) : ''}...`);
     } catch (err) {
-        logger.warn(`[DuplicateCheck] Erro ao marcar URL: ${err.message}`);
+        logger.warn(`[DuplicateCheck] Erro ao marcar promoção: ${err.message}`);
     }
 }
 
@@ -264,29 +364,17 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
 
     try {
         console.log(`[2/8] Verificando duplicatas no Redis...`);
-        let alreadyProcessing;
-        try {
-            // Use SETNX (SET if Not eXists) for atomic lock to prevent race conditions
-            // This ensures only one processor (bot OR user account) handles this URL
-            // Expiry: 3600 seconds (1 hour) - allows reposting after 1 hour
-            alreadyProcessing = await Promise.race([
-                redis.set(key, 'processing', 'EX', 3600, 'NX'), // 1h expiry, only set if not exists
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Redis timeout')), 3000))
-            ]);
-            // SETNX returns 'OK' if key was set (meaning we got the lock), null if key exists
-            const gotLock = alreadyProcessing === 'OK';
-            console.log(`[2/8] ✅ Redis check ok (got lock: ${gotLock})`);
-            
-            if (!gotLock) {
-                logger.info(`Duplicate URL detected (already processed in last 1h), skipping: ${primaryUrl.substring(0, 50)}`);
-                console.log(`[2/8] ⚠️ URL duplicada (processada na última 1h): ${primaryUrl.substring(0, 50)}...`);
-                return { skipped: true, reason: 'duplicated' };
-            }
-        } catch (redisErr) {
-            logger.warn(`Redis error: ${redisErr.message}`);
-            console.warn(`[2/8] ⚠️ Redis error: ${redisErr.message}, continuando...`);
-            // Continue anyway if Redis fails, but log a warning
+        
+        // Use the enhanced duplicate check with product identifier extraction
+        const duplicateCheck = await checkDuplicateUrl(primaryUrl, 21600); // 6 hours
+        
+        if (duplicateCheck.isDuplicate) {
+            logger.info(`Duplicate URL detected (already processed in last 6h), skipping: ${primaryUrl.substring(0, 50)}`);
+            console.log(`[2/8] ⚠️ URL duplicada (processada nas últimas 6h): ${primaryUrl.substring(0, 50)}...`);
+            return { skipped: true, reason: 'duplicated' };
         }
+        
+        console.log(`[2/8] ✅ Redis check ok (nova promoção)`);
 
         console.log(`[3/8] Gerando links de afiliado para ${urls.length} URL(s)...`);
         const affiliateUrls = {};
@@ -672,6 +760,9 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
             imageSource = null;
         }
         
+        // Track whether any send actually succeeded. Only mark as sent if at least one send succeeded.
+        let anySendSuccess = false;
+
         // Send with image if available
         if (imageSource) {
             logger.info('[8/8] Sending with image...');
@@ -687,6 +778,7 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
                     });
                     logger.info('Sent to General (main chat) with image');
                     console.log(`[8/8] ✅ Enviado para General (chat principal) com imagem`);
+                    anySendSuccess = true;
                 } catch (err) {
                     logger.warn(`Failed to send to General: ${err.message}`);
                     console.warn(`⚠️ Erro ao enviar para General: ${err.message}`);
@@ -704,6 +796,7 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
                     });
                     logger.info(`Sent to category ${threadId} with image`);
                     console.log(`[8/8] ✅ Enviado para categoria ${threadId} com imagem`);
+                    anySendSuccess = true;
                 } catch (threadErr) {
                     logger.warn(`Failed to send to thread ${threadId}: ${threadErr.message}`);
                     console.warn(`⚠️ Erro ao enviar para tópico ${threadId}: ${threadErr.message}`);
@@ -722,6 +815,7 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
                     });
                     logger.info('Sent to General (main chat) without image');
                     console.log(`[8/8] ✅ Enviado para General (chat principal) sem imagem`);
+                    anySendSuccess = true;
                 } catch (err) {
                     logger.warn(`Failed to send to General: ${err.message}`);
                     console.warn(`⚠️ Erro ao enviar para General: ${err.message}`);
@@ -738,11 +832,19 @@ async function handlePromotionFlow(text, ctx = null, attachedPhotoUrl = null) {
                     });
                     logger.info(`Sent to category ${threadId} without image`);
                     console.log(`[8/8] ✅ Enviado para categoria ${threadId} sem imagem`);
+                    anySendSuccess = true;
                 } catch (threadErr) {
                     logger.warn(`Failed to send to thread ${threadId}: ${threadErr.message}`);
                     console.warn(`[8/8] ⚠️ Erro ao enviar para tópico ${threadId}: ${threadErr.message}`);
                 }
             }
+        }
+
+        // If none of the sends succeeded, treat as an error and do not mark as processed
+        if (!anySendSuccess) {
+            logger.error('No successful Telegram sends were performed (all attempts failed)');
+            console.error('❌ Nenhum envio bem-sucedido para o Telegram; abortando marcação como enviada');
+            throw new Error('Falha ao enviar mensagem para Telegram (nenhum envio bem-sucedido)');
         }
 
         // Mark in Redis for 1h (prevent reposting same URL within 1 hour)

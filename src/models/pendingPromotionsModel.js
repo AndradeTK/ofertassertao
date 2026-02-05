@@ -39,7 +39,7 @@ class PendingPromotions {
                 imagePath || null,
                 JSON.stringify(urls || []),
                 JSON.stringify(affiliateUrls || {}),
-                suggestedCategory || 'Variados',
+                suggestedCategory || 'Outros',
                 source || 'unknown',
                 reason
             ]

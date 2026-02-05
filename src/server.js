@@ -778,31 +778,69 @@ app.put('/api/pending-promotions/:id', async (req, res) => {
 // Approve and send a pending promotion
 app.post('/api/pending-promotions/:id/approve', async (req, res) => {
     try {
+        const affiliateService = require('./services/affiliateService');
+        const { pool } = require('./config/db');
         const { category } = req.body;
         const promotion = await PendingPromotions.getById(req.params.id);
-        
+
         if (!promotion) {
             return res.status(404).json({ error: 'Promoção não encontrada' });
         }
-        
-        // Parse URLs first to get the affiliate URL for duplicate check
-        let affiliateUrls;
-        try {
-            affiliateUrls = JSON.parse(promotion.affiliate_urls || '{}');
-        } catch (e) {
-            affiliateUrls = {};
+
+        // Parse affiliate_urls; if absent or empty, regenerate from original urls
+        // Normalize affiliate_urls: support both stringified JSON and already-parsed object
+        let affiliateUrls = {};
+        if (promotion.affiliate_urls) {
+            if (typeof promotion.affiliate_urls === 'string') {
+                try { affiliateUrls = JSON.parse(promotion.affiliate_urls); } catch (e) { affiliateUrls = {}; }
+            } else if (typeof promotion.affiliate_urls === 'object') {
+                affiliateUrls = promotion.affiliate_urls || {};
+            }
         }
-        
-        const allAffiliateUrls = Object.values(affiliateUrls);
-        const primaryUrl = allAffiliateUrls[0] || promotion.original_url;
-        
-        // Check for duplicate using Redis
-        if (primaryUrl) {
-            const { isDuplicate } = await checkDuplicateUrl(primaryUrl);
+
+        // If no affiliate urls, try to regenerate now from stored original URLs
+        // Normalize urls: support both stringified JSON and already-parsed array
+        let urlsList = [];
+        if (promotion.urls) {
+            if (typeof promotion.urls === 'string') {
+                try { urlsList = JSON.parse(promotion.urls); } catch (e) { urlsList = []; }
+            } else if (Array.isArray(promotion.urls)) {
+                urlsList = promotion.urls;
+            }
+        }
+
+        if ((!affiliateUrls || Object.keys(affiliateUrls).length === 0) && urlsList.length > 0) {
+            const regenerated = {};
+            for (const u of urlsList) {
+                try {
+                    const resAff = await affiliateService.generateAffiliateLink(u);
+                    regenerated[u] = (resAff && resAff.affiliateUrl) ? resAff.affiliateUrl : u;
+                } catch (e) {
+                    regenerated[u] = u;
+                }
+            }
+            // Persist regenerated affiliate_urls to pending_promotions
+            try {
+                await pool.execute('UPDATE pending_promotions SET affiliate_urls = ? WHERE id = ?', [JSON.stringify(regenerated), req.params.id]);
+                affiliateUrls = regenerated;
+            } catch (e) {
+                console.warn('Could not persist regenerated affiliate URLs:', e.message);
+                affiliateUrls = regenerated;
+            }
+        }
+
+        const allAffiliateUrls = Object.values(affiliateUrls || {});
+        // Use ORIGINAL URL for duplicate check, not affiliate URL
+        // This prevents the same product being marked as duplicate because affiliate link changed
+        const primaryOriginalUrl = urlsList[0] || (allAffiliateUrls[0] || promotion.original_url);
+
+        // Check for duplicate using Redis (usando original URL e título para fallback)
+        if (primaryOriginalUrl) {
+            const { isDuplicate } = await checkDuplicateUrl(primaryOriginalUrl, undefined, promotion.product_name);
             if (isDuplicate) {
                 // Auto-reject the duplicate
                 await PendingPromotions.reject(req.params.id, 'Duplicado detectado pelo sistema');
-                
+
                 // Broadcast updated count
                 const count = await PendingPromotions.getPendingCount();
                 wss.clients.forEach(client => {
@@ -814,7 +852,7 @@ app.post('/api/pending-promotions/:id/approve', async (req, res) => {
                         }));
                     }
                 });
-                
+
                 return res.status(409).json({ 
                     error: 'Promoção duplicada detectada',
                     duplicate: true 
@@ -860,6 +898,14 @@ app.post('/api/pending-promotions/:id/approve', async (req, res) => {
         
         // Get image source for Telegram (handles local files and URLs)
         const imageSource = getImageSourceForTelegram(promotion.image_path);
+
+        // Debug: log affiliate urls and preview of message text
+        console.log('[Approve] affiliateUrls used for sending:', JSON.stringify(affiliateUrls));
+        try {
+            console.log('[Approve] messageText preview:', messageText.substring(0, 300));
+        } catch (e) {
+            console.log('[Approve] messageText (could not substring)');
+        }
         
         // Create the send callback function
         const sendCallback = async () => {
@@ -906,10 +952,13 @@ app.post('/api/pending-promotions/:id/approve', async (req, res) => {
             productName,
             category: finalCategory,
             threadId,
-            sendCallback
+            sendCallback,
+            onSent: async () => {
+                // Só marca como processada no Redis após envio real
+                await markUrlAsProcessed(primaryOriginalUrl, undefined, promotion.product_name);
+            }
         });
-        
-        // Mark as approved immediately (will be sent from queue)
+        // Marcar como aprovada no banco, mas só marcar no Redis após envio real
         await PendingPromotions.approve(req.params.id, finalCategory);
         
         // Broadcast updated count
@@ -1057,13 +1106,22 @@ app.post('/api/pending-promotions/approve-all', async (req, res) => {
         
         for (const promo of pending) {
             try {
-                // Get primary URL for duplicate check
+                // Get ORIGINAL URLs for duplicate check (NOT affiliate URLs)
+                let urlsList = [];
+                try {
+                    urlsList = promo.urls || [];
+                    if (typeof urlsList === 'string') urlsList = JSON.parse(urlsList);
+                } catch (e) { urlsList = []; }
+                
                 let affiliateUrls = {};
                 try {
-                    affiliateUrls = JSON.parse(promo.affiliate_urls || '{}');
-                } catch (e) {}
+                    affiliateUrls = promo.affiliate_urls || {};
+                    if (typeof affiliateUrls === 'string') affiliateUrls = JSON.parse(affiliateUrls);
+                } catch (e) { affiliateUrls = {}; }
+                
                 const allAffiliateUrls = Object.values(affiliateUrls);
-                const primaryUrl = allAffiliateUrls[0] || promo.original_url;
+                // Use ORIGINAL URL for duplicate check
+                const primaryUrl = urlsList[0] || allAffiliateUrls[0] || promo.original_url;
                 
                 // Check for duplicate using Redis
                 if (primaryUrl) {
@@ -1077,7 +1135,7 @@ app.post('/api/pending-promotions/approve-all', async (req, res) => {
                 }
                 
                 // Use suggested category or 'Variados'
-                const category = promo.suggested_category || 'Variados';
+                const category = promo.suggested_category || 'Outros';
                 const threadId = await Category.getThreadIdByName(category);
                 
                 // Mark as approved
@@ -1210,13 +1268,22 @@ app.post('/api/no-affiliate-promotions/approve-all', async (req, res) => {
         
         for (const promo of pending) {
             try {
-                // Get primary URL for duplicate check
+                // Get ORIGINAL URLs for duplicate check (NOT affiliate URLs)
+                let urlsList = [];
+                try {
+                    urlsList = promo.urls || [];
+                    if (typeof urlsList === 'string') urlsList = JSON.parse(urlsList);
+                } catch (e) { urlsList = []; }
+                
                 let affiliateUrls = {};
                 try {
-                    affiliateUrls = JSON.parse(promo.affiliate_urls || '{}');
-                } catch (e) {}
+                    affiliateUrls = promo.affiliate_urls || {};
+                    if (typeof affiliateUrls === 'string') affiliateUrls = JSON.parse(affiliateUrls);
+                } catch (e) { affiliateUrls = {}; }
+                
                 const allAffiliateUrls = Object.values(affiliateUrls);
-                const primaryUrl = allAffiliateUrls[0] || promo.original_url;
+                // Use ORIGINAL URL for duplicate check
+                const primaryUrl = urlsList[0] || allAffiliateUrls[0] || promo.original_url;
                 
                 // Check for duplicate using Redis
                 if (primaryUrl) {

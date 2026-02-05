@@ -61,6 +61,34 @@ async function generateAffiliateLink(originalUrl) {
             return { affiliateUrl, platform: 'amazon' };
         }
 
+        // Unknown host: try to follow redirects to detect shorteners (e.g., tidd.ly, bit.ly, etc.)
+        try {
+            const resp = await axios.get(originalUrl, {
+                maxRedirects: 10,
+                timeout: DEFAULT_TIMEOUT,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+                },
+                validateStatus: (status) => status < 400
+            });
+
+            const finalUrl = resp.request && resp.request.res && resp.request.res.responseUrl ? resp.request.res.responseUrl : resp.config && resp.config.url ? resp.config.url : null;
+            if (finalUrl && finalUrl !== originalUrl) {
+                try {
+                    const finalHost = new URL(finalUrl).hostname.toLowerCase();
+                    // If redirect leads to a supported platform, re-run generation for the final URL
+                    if (finalHost.includes('shopee') || finalHost.includes('mercadolivre') || finalHost.includes('mercado-livre') || finalHost.includes('mercadolibre') || finalHost.includes('aliexpress') || finalHost.includes('amazon') || finalHost.includes('amzn')) {
+                        return await generateAffiliateLink(finalUrl);
+                    }
+                } catch (e) {
+                    // ignore
+                }
+            }
+        } catch (e) {
+            // ignore network errors when resolving shorteners
+        }
+
         return { affiliateUrl: originalUrl, platform: 'original' };
     } catch (err) {
         console.error('affiliateService error:', err.message || err);
@@ -114,9 +142,14 @@ function isShopeeAffiliateLink(url) {
 
 /**
  * Resolve a Shopee affiliate link to get the original product URL
+ * Validates the product ID matches to prevent wrong product redirects
  */
 async function resolveShopeeAffiliateLink(affiliateUrl) {
     try {
+        // Extract any product ID from the original URL for validation
+        const originalMatch = affiliateUrl.match(/-i\.(\d+)\.(\d+)/) || affiliateUrl.match(/i\.(\d+)\.(\d+)/);
+        const originalProductId = originalMatch ? originalMatch[2] : null;
+        
         const response = await axios.get(affiliateUrl, {
             maxRedirects: 10,
             timeout: 10000,
@@ -131,6 +164,18 @@ async function resolveShopeeAffiliateLink(affiliateUrl) {
         
         if (finalUrl && finalUrl.includes('shopee.com.br')) {
             const u = new URL(finalUrl);
+            
+            // Validate the resolved URL has the same product ID (if we knew the original)
+            const resolvedMatch = finalUrl.match(/-i\.(\d+)\.(\d+)/) || finalUrl.match(/i\.(\d+)\.(\d+)/);
+            const resolvedProductId = resolvedMatch ? resolvedMatch[2] : null;
+            
+            // If we have both IDs and they don't match, the redirect went to wrong product
+            if (originalProductId && resolvedProductId && originalProductId !== resolvedProductId) {
+                console.warn(`[Shopee] ⚠️ Produto ID não confere! Original: ${originalProductId}, Resolvido: ${resolvedProductId}`);
+                console.warn(`[Shopee] ⚠️ Retornando URL original para evitar troca de produto`);
+                return affiliateUrl; // Return original to avoid wrong product
+            }
+            
             // Remove affiliate tracking parameters
             u.searchParams.delete('af_siteid');
             u.searchParams.delete('af_sub_siteid');
@@ -144,6 +189,7 @@ async function resolveShopeeAffiliateLink(affiliateUrl) {
         
         return finalUrl || affiliateUrl;
     } catch (err) {
+        console.warn(`[Shopee] Erro ao resolver link de afiliado: ${err.message}`);
         throw err;
     }
 }

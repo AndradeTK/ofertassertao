@@ -1,3 +1,17 @@
+## CI/CD Auto-Update Script
+
+To enable automatic updates from GitHub and restart the application using Docker Compose, use the provided script:
+
+```
+./ci_cd_update.sh
+```
+
+This script will:
+- Pull the latest code from the repository
+- Rebuild and restart the Docker containers if there are updates
+- Warn if there are local changes that need manual resolution
+
+You can schedule this script with a cron job or run it manually after pushing updates to GitHub.
 # 🛒 OfertasSertão - Bot de Promoções Afiliadas
 
 Sistema completo para monitoramento e republicação automática de promoções com links de afiliados para Telegram.

@@ -1,34 +1,47 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Category mapping: AI output -> Database name
+// Category mapping: AI output -> Database `categories.name_ia`
+// Synchronized with migrations/ofertassertao.sql
 const CATEGORY_MAP = {
-    'Smartphones': 'Smartphone',
-    'Smartphone': 'Smartphone',
-    'Teclados': 'Teclados',
-    'Mouse e Mousepad': 'Mouse e Mousepad',
-    'Headset e Fone': 'Headset e Fone',
-    'Monitor': 'Monitor',
-    'Processador': 'Processador',
-    'Placa de Vídeo': 'Placa de Vídeo',
-    'Placa Mãe': 'Placa Mãe',
-    'Memória Ram': 'Memória Ram',
-    'Armazenamento': 'Armazenamento',
-    'Fonte': 'Fonte',
-    'Gabinete': 'Gabinete',
-    'Refrigeração': 'Refrigeração',
-    'Pc e Notebook': 'Pc e Notebook',
-    'Consoles': 'Consoles',
-    'Áudio': 'Áudio',
-    'Mesas': 'Mesas',
+    'Acessorios': 'Acessórios',
     'Acessórios': 'Acessórios',
-    'Eletrônicos': 'Eletrônicos',
+    'Áudio': 'Áudio',
+    'Audio': 'Áudio',
+    'Armazenamento': 'Armazenamento',
+    'Cadeiras': 'Cadeiras',
+    'Computador/Notebook': 'Computador/Notebook',
+    'Pc e Notebook': 'Computador/Notebook',
+    'Consoles': 'Consoles',
     'Cupom': 'Cupom',
     'Cupons': 'Cupom',
-    'Variados': 'Variados',
-    'Casa': 'Variados',
-    'Moda': 'Variados',
-    'Outros': 'Variados'
+    'Eletronicos': 'Eletrônicos',
+    'Eletrônicos': 'Eletrônicos',
+    'Fitness': 'Fitness',
+    'Fonte': 'Fonte',
+    'Gabinete': 'Gabinete',
+    'Headset/Fone': 'Headset/Fone',
+    'Headset e Fone': 'Headset/Fone',
+    'Higiene': 'Higiene',
+    'Jogos': 'Jogos',
+    'Memoria RAM': 'Memória RAM',
+    'Memória RAM': 'Memória RAM',
+    'Mesas': 'Mesas',
+    'Monitores': 'Monitores',
+    'Mouse': 'Mouse',
+    'Outros': 'Outros',
+    'Placa de Video': 'Placa de Vídeo',
+    'Placa de Vídeo': 'Placa de Vídeo',
+    'Placa Mae': 'Placa Mãe',
+    'Placa Mãe': 'Placa Mãe',
+    'Processador': 'Processador',
+    'Produto de Limpeza': 'Produto de Limpeza',
+    'Roupa/Moda': 'Roupa/Moda',
+    'Teclado': 'Teclado',
+    'Telefone/Tablet': 'Telefone/Tablet',
+    'Telefone / Tablet': 'Telefone/Tablet',
+    'Televisao': 'Televisão',
+    'Televisão': 'Televisão'
 };
 
 /**
@@ -165,11 +178,52 @@ FOR PRODUCT MESSAGES:
 - "variants": Array of variants if the product has multiple sizes/options with different prices. Each variant: {"label": "30ml", "price": "R$ 186"}
   * If no variants, use empty array []
   * IMPORTANT: Extract ALL variants with their labels and prices!
-- "category": Classify the PRODUCT into one of these:
-  * Smartphone, Monitor, Teclados, Mouse e Mousepad, Headset e Fone
-  * Processador, Placa de Vídeo, Placa Mãe, Memória Ram, Armazenamento
-  * Fonte, Gabinete, Refrigeração, Pc e Notebook, Consoles
-  * Áudio, Mesas, Acessórios, Eletrônicos, Variados
+- "category": Classify the PRODUCT into one of these (these names match the system categories):
+    * Acessórios
+    * Áudio
+    * Armazenamento
+    * Cadeiras
+    * Computador/Notebook
+    * Consoles
+    * Cupom
+    * Eletrônicos
+    * Fitness
+    * Fonte
+    * Gabinete
+    * Headset/Fone
+    * Higiene
+    * Jogos
+    * Memória RAM
+    * Mesas
+    * Monitores
+    * Mouse
+    * Outros
+    * Placa de Vídeo
+    * Placa Mãe
+    * Processador
+    * Produto de Limpeza
+    * Roupa/Moda
+    * Teclado
+    * Telefone/Tablet
+    * Televisão
+
+    EXAMPLES (keyword -> category):
+    - "iphone" -> "Telefone/Tablet"
+    - "ipad" -> "Telefone/Tablet"
+    - "macbook" -> "Computador/Notebook"
+    - "notebook" -> "Computador/Notebook"
+    - "ssd" -> "Armazenamento"
+    - "hd" -> "Armazenamento"
+    - "rtx" -> "Placa de Vídeo"
+    - "placa de vídeo" -> "Placa de Vídeo"
+    - "ryzen" -> "Processador"
+    - "intel" -> "Processador"
+    - "teclado" -> "Teclado"
+    - "fone" -> "Headset/Fone"
+    - "airpods" -> "Headset/Fone"
+    - "monitor" -> "Monitores"
+    - "tv" -> "Televisão"
+
 - "isCouponMessage": false
 - "confidence": 0-100
 
@@ -191,7 +245,7 @@ Output: {
     {"label": "30ml", "price": "R$ 186"},
     {"label": "100ml", "price": "R$ 289"}
   ],
-  "category": "Variados",
+  "category": "Outros",
   "isCouponMessage": false,
   "confidence": 95
 }
@@ -264,7 +318,7 @@ Return ONLY the JSON object.`;
         }
 
         // Map AI category to database category name
-        const mappedCategory = CATEGORY_MAP[parsed.category] || parsed.category || 'Variados';
+        const mappedCategory = CATEGORY_MAP[parsed.category] || parsed.category || 'Outros';
         
         return {
             title: parsed.title || '',

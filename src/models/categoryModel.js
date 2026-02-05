@@ -72,7 +72,7 @@ const Category = {
             }
             
             // Last resort: try to find "Outros" or "Variados" category as fallback
-            const fallbackCategories = ['outros', 'variados', 'geral', 'other'];
+            const fallbackCategories = ['outros', 'geral', 'other'];
             for (const row of allRows) {
                 const normalizedCategory = normalizeText(row.name_ia);
                 if (fallbackCategories.includes(normalizedCategory)) {
