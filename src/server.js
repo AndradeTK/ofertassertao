@@ -834,12 +834,17 @@ app.post('/api/pending-promotions/:id/approve', async (req, res) => {
         // This prevents the same product being marked as duplicate because affiliate link changed
         const primaryOriginalUrl = urlsList[0] || (allAffiliateUrls[0] || promotion.original_url);
 
-        // Check for duplicate using Redis (usando original URL e título para fallback)
+        // For fallback/manual approval, skip Redis duplicate check and check only post_history for actual sent promotions
         if (primaryOriginalUrl) {
-            const { isDuplicate } = await checkDuplicateUrl(primaryOriginalUrl, undefined, promotion.product_name);
-            if (isDuplicate) {
+            // Check if this URL or product_name was already sent (exists in post_history)
+            const [rows] = await pool.execute(
+                `SELECT COUNT(*) as count FROM post_history WHERE (JSON_CONTAINS(urls, ?)
+                OR product_name = ?) AND success = 1`,
+                [JSON.stringify([primaryOriginalUrl]), promotion.product_name]
+            );
+            if (rows[0].count > 0) {
                 // Auto-reject the duplicate
-                await PendingPromotions.reject(req.params.id, 'Duplicado detectado pelo sistema');
+                await PendingPromotions.reject(req.params.id, 'Duplicado detectado no histórico de envios');
 
                 // Broadcast updated count
                 const count = await PendingPromotions.getPendingCount();
@@ -854,7 +859,7 @@ app.post('/api/pending-promotions/:id/approve', async (req, res) => {
                 });
 
                 return res.status(409).json({ 
-                    error: 'Promoção duplicada detectada',
+                    error: 'Promoção duplicada detectada no histórico',
                     duplicate: true 
                 });
             }
